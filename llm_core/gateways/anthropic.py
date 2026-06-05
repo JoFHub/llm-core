@@ -117,9 +117,12 @@ class AnthropicGateway(LLMGateway):
         output_type: type[T],
         thinking: bool = False,
     ) -> T:
-        kwargs: dict = {"temperature": temperature}
+        kwargs: dict = {}
         if thinking:
             kwargs["thinking"] = {"type": "adaptive"}
+            kwargs["temperature"] = 1  # Pflicht wenn thinking aktiv
+        else:
+            kwargs["temperature"] = temperature
 
         response = self._client.messages.parse(
             model=model_name,
