@@ -117,13 +117,9 @@ class AnthropicGateway(LLMGateway):
         output_type: type[T],
         thinking: bool = False,
     ) -> T:
-        kwargs: dict = {}
+        kwargs: dict = {"temperature": temperature}
         if thinking:
-            # Thinking erfordert min. 1024 output tokens und temperature=1
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": min(max_tokens // 2, 8000)}
-            kwargs["temperature"] = 1
-        else:
-            kwargs["temperature"] = temperature
+            kwargs["thinking"] = {"type": "adaptive"}
 
         response = self._client.messages.parse(
             model=model_name,
