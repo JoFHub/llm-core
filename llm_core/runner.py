@@ -8,6 +8,7 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
+from .agent import AgentResult, AgentStep, Tool, ToolCall, ToolExecutor
 from .config import LLMBackend, LLMConfig
 from .gateways.ollama import OllamaGateway
 
@@ -202,3 +203,65 @@ class LLMRunner:
             output_type=output_type,
             thinking=thinking,
         )
+
+    def call_agent(
+        self,
+        system: str,
+        user: str,
+        tools: list[Tool],
+        tool_executor: ToolExecutor,
+        prior_messages: list[dict] | None = None,
+        max_iterations: int = 10,
+    ) -> AgentResult:
+        """
+        ReAct-Agent-Loop — funktioniert mit allen Backends die Tool Use unterstützen.
+
+        Args:
+            system: System-Prompt
+            user: Aktuelle User-Frage
+            tools: Liste von Tool-Definitionen (backend-agnostisch)
+            tool_executor: Callback (tool_name, tool_input) → result_string
+            prior_messages: Bisherige Konversationshistorie (für Multi-Turn)
+            max_iterations: Sicherheitslimit für Tool-Runden
+
+        Returns:
+            AgentResult mit answer, steps (Tool-Log) und messages (History)
+        """
+        messages = list(prior_messages or []) + [{"role": "user", "content": user}]
+        steps: list[AgentStep] = []
+
+        for iteration in range(max_iterations):
+            text, tool_calls, messages = self._gateway.chat_with_tools(
+                system=system,
+                messages=messages,
+                tools=tools,
+                model_name=self._config.model,
+                temperature=self._config.temperature,
+                max_tokens=self._config.max_tokens,
+            )
+
+            if not tool_calls:
+                return AgentResult(answer=text or "", steps=steps, messages=messages)
+
+            # Tools ausführen und Ergebnisse in History eintragen
+            for tc in tool_calls:
+                result = tool_executor(tc.name, tc.input)
+                steps.append(AgentStep(
+                    tool_name=tc.name,
+                    tool_input=tc.input,
+                    tool_result=result,
+                ))
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "name": tc.name,
+                    "content": result,
+                })
+
+        # Max-Iterations: finaler Call ohne Tools
+        logger.warning(f"[{self._config.model}] max_iterations={max_iterations} erreicht — finaler Call ohne Tools")
+        final_text = self.call_chat_with_history(
+            system=system + "\n\nBeantworte die Frage jetzt abschließend mit den vorliegenden Informationen.",
+            messages=messages,
+        )
+        return AgentResult(answer=final_text, steps=steps, messages=messages)

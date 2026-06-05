@@ -5,6 +5,7 @@ import logging
 import os
 
 from .base import LLMGateway
+from .._message_utils import tool_to_openai, to_openai_messages, from_openai_response
 
 logger = logging.getLogger(__name__)
 
@@ -110,3 +111,38 @@ class OpenAICompatGateway(LLMGateway):
         used_model = resp.model or model_name
         _track(self._provider, used_model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
         return resp.choices[0].message.content
+
+    def chat_with_tools(
+        self,
+        *,
+        system: str,
+        messages: list[dict],
+        tools: list,
+        model_name: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> tuple[str | None, list, list[dict]]:
+        oai_messages = [{"role": "system", "content": system}] + to_openai_messages(messages)
+        oai_tools = [tool_to_openai(t) for t in tools]
+
+        resp = self._client.chat.completions.create(
+            model=model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            messages=oai_messages,
+            tools=oai_tools,
+            tool_choice="auto",
+        )
+        used_model = resp.model or model_name
+        if resp.usage:
+            _track(self._provider, used_model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
+
+        text, tool_calls = from_openai_response(resp.choices[0])
+
+        assistant_msg: dict = {"role": "assistant", "content": text}
+        if tool_calls:
+            assistant_msg["tool_calls"] = [
+                {"id": tc.id, "name": tc.name, "input": tc.input} for tc in tool_calls
+            ]
+
+        return text, tool_calls, messages + [assistant_msg]

@@ -8,6 +8,9 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from .base import LLMGateway
+from .._message_utils import (
+    tool_to_anthropic, to_anthropic_messages, from_anthropic_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -134,3 +137,36 @@ class AnthropicGateway(LLMGateway):
         )
         _track(model_name, response.usage.input_tokens, response.usage.output_tokens)
         return response.parsed_output
+
+    def chat_with_tools(
+        self,
+        *,
+        system: str,
+        messages: list[dict],
+        tools: list,
+        model_name: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> tuple[str | None, list, list[dict]]:
+        ant_messages = to_anthropic_messages(messages)
+        ant_tools = [tool_to_anthropic(t) for t in tools]
+
+        response = self._client.messages.create(
+            model=model_name,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system,
+            messages=ant_messages,
+            tools=ant_tools,
+        )
+        _track(model_name, response.usage.input_tokens, response.usage.output_tokens)
+
+        text, tool_calls = from_anthropic_response(response.content)
+
+        assistant_msg: dict = {"role": "assistant", "content": text}
+        if tool_calls:
+            assistant_msg["tool_calls"] = [
+                {"id": tc.id, "name": tc.name, "input": tc.input} for tc in tool_calls
+            ]
+
+        return text, tool_calls, messages + [assistant_msg]
