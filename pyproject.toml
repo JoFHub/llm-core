@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-core"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "Zentralisierter LLM-Zugriff: Ollama, Claude, OpenRouter, Mistral"
+dependencies = [
+    "anthropic>=0.50.0",
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-mock>=3.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["llm_core*"]
