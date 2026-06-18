@@ -146,3 +146,32 @@ class OpenAICompatGateway(LLMGateway):
             ]
 
         return text, tool_calls, messages + [assistant_msg]
+
+    def chat_multimodal(
+        self,
+        *,
+        system: str,
+        user: str,
+        images: list[dict],
+        model_name: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> tuple[str, str]:
+        content: list[dict] = [{"type": "text", "text": user}]
+        for img in images:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{img['base64']}"},
+            })
+        resp = self._client.chat.completions.create(
+            model=model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": content},
+            ],
+        )
+        used_model = resp.model or model_name
+        _track(self._provider, used_model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
+        return resp.choices[0].message.content, used_model

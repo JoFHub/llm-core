@@ -141,6 +141,18 @@ class LLMRunner:
         )
         return response
 
+    def call_multimodal(self, system: str, user: str, images: list[dict]) -> str:
+        """Vision-Chat mit Bildern → roher String. images: [{"base64": "..."}]"""
+        response, _ = self._gateway.chat_multimodal(
+            system=system,
+            user=user,
+            images=images,
+            model_name=self._config.model,
+            temperature=self._config.temperature,
+            max_tokens=self._config.max_tokens,
+        )
+        return response
+
     def call_single(self, system: str, user: str) -> dict[str, Any]:
         """LLM-Aufruf → JSON-Dict (z.B. Metadaten-Extraktion). Mit Retry."""
         last_exc: Exception | None = None
