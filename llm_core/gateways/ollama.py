@@ -101,6 +101,36 @@ class OllamaGateway(LLMGateway):
         result = self._post_chat(payload)
         return result["message"]["content"]
 
+    def _to_ollama_messages(self, messages: list[dict]) -> list[dict]:
+        """Wie to_openai_messages, aber arguments als dict (nicht JSON-String) — Ollama-Format."""
+        result = []
+        for msg in messages:
+            role = msg["role"]
+            if role == "assistant" and "tool_calls" in msg:
+                result.append({
+                    "role": "assistant",
+                    "content": msg.get("content") or "",
+                    "tool_calls": [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tc["name"],
+                                "arguments": tc["input"],  # dict, kein json.dumps
+                            },
+                        }
+                        for tc in msg["tool_calls"]
+                    ],
+                })
+            elif role == "tool":
+                result.append({
+                    "role": "tool",
+                    "content": msg["content"],
+                })
+            else:
+                result.append({"role": role, "content": msg.get("content", "")})
+        return result
+
     def chat_with_tools(
         self,
         *,
@@ -111,12 +141,11 @@ class OllamaGateway(LLMGateway):
         temperature: float,
         max_tokens: int,
     ) -> tuple[str | None, list, list[dict]]:
-        from .._message_utils import to_openai_messages
         from ..agent import ToolCall
 
         payload = {
             "model": model_name,
-            "messages": [{"role": "system", "content": system}] + to_openai_messages(messages),
+            "messages": [{"role": "system", "content": system}] + self._to_ollama_messages(messages),
             "stream": False,
             "tools": [tool_to_openai(t) for t in tools],
             "options": {"temperature": temperature, "num_predict": max_tokens},
