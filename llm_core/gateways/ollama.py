@@ -15,6 +15,10 @@ _TIMEOUT = float(os.environ.get("OLLAMA_TIMEOUT", "600"))
 # Modell zwischen Aufrufen im Speicher halten (Ollama-Default: nur 5 m) —
 # erspart periodischen Jobs (z.B. 15-Minuten-Sync) das erneute Kaltladen.
 _KEEP_ALIVE = os.environ.get("OLLAMA_KEEP_ALIVE", "30m")
+# Kontextfenster: Ollamas Default (4096 Tokens) schneidet lange RAG-Prompts
+# still ab — das Modell sieht dann nur einen Teil der Dokumente. 16k passt
+# für 14B-q4-Modelle bequem in 16 GB VRAM (KV-Cache ~2 GB).
+_NUM_CTX = int(os.environ.get("OLLAMA_NUM_CTX", "16384"))
 
 
 class OllamaGateway(LLMGateway):
@@ -75,7 +79,7 @@ class OllamaGateway(LLMGateway):
                 {"role": "user", "content": user},
             ],
             "stream": False,
-            "options": {"temperature": temperature, "num_predict": max_tokens},
+            "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": _NUM_CTX},
         }
         if json_mode:
             payload["format"] = "json"
@@ -96,7 +100,7 @@ class OllamaGateway(LLMGateway):
             "model": model_name,
             "messages": [{"role": "system", "content": system}] + messages,
             "stream": False,
-            "options": {"temperature": temperature, "num_predict": max_tokens},
+            "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": _NUM_CTX},
         }
         result = self._post_chat(payload)
         return result["message"]["content"]
@@ -148,7 +152,7 @@ class OllamaGateway(LLMGateway):
             "messages": [{"role": "system", "content": system}] + self._to_ollama_messages(messages),
             "stream": False,
             "tools": [tool_to_openai(t) for t in tools],
-            "options": {"temperature": temperature, "num_predict": max_tokens},
+            "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": _NUM_CTX},
         }
         result = self._post_chat(payload)
         message = result["message"]
