@@ -7,6 +7,8 @@ name = "llm-core"
 version = "0.1.0"
 requires-python = ">=3.11"
 description = "Zentralisierter LLM-Zugriff: Ollama, Claude, OpenRouter, Mistral"
+readme = "README.md"
+license = {text = "MIT"}
 dependencies = [
     "anthropic>=0.50.0",
     "openai>=1.0.0",
