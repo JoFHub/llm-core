@@ -9,10 +9,13 @@ Normalisiertes Format (wird im LLMRunner verwendet):
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .agent import Tool, ToolCall
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +74,20 @@ def from_openai_response(choice) -> tuple[str | None, list["ToolCall"]]:
     tool_calls = []
 
     for tc in message.tool_calls or []:
+        # Manche Provider (u.a. Gemini via OpenRouter) liefern gelegentlich
+        # einen Tool-Call-Stub ohne gueltigen Funktionsnamen (leer/None) —
+        # meist ein Uebersetzungsfehler des Providers, kein echter Aufruf.
+        # Wird das als echter Call behandelt, landet ein Tool-Ergebnis in der
+        # History fuer einen Call, den der Provider selbst nie als gueltigen
+        # Funktionsaufruf ansah -> naechster Request wird mit "produced no
+        # valid function calls but is followed by tool result messages"
+        # abgelehnt. Also verwerfen statt weiterreichen.
+        if not tc.function or not tc.function.name:
+            logger.warning(
+                "Tool-Call ohne gueltigen Funktionsnamen verworfen (id=%s) — "
+                "vermutlich Provider-Uebersetzungsfehler.", getattr(tc, "id", "?"),
+            )
+            continue
         try:
             args = json.loads(tc.function.arguments)
         except (json.JSONDecodeError, TypeError):
