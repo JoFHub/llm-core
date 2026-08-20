@@ -99,12 +99,18 @@ class AnthropicGateway(LLMGateway):
         temperature: float,
         max_tokens: int,
     ) -> str:
+        # to_anthropic_messages() ist fuer normale {"role": "user"/"assistant",
+        # "content": str}-Historien ein No-Op, macht diese Methode aber auch fuer
+        # Aufrufer sicher, die (wie call_agent()s max_iterations-Fallback) noch
+        # das interne tool-Loop-Format mit role="tool"/tool_calls uebergeben —
+        # das lehnt die Anthropic-API sonst mit "Unexpected role" ab, weil nur
+        # chat_with_tools() bislang konvertiert hat.
         msg = self._client.messages.create(
             model=model_name,
             max_tokens=max_tokens,
             temperature=temperature,
             system=system,
-            messages=messages,
+            messages=to_anthropic_messages(messages),
         )
         _track(model_name, msg.usage.input_tokens, msg.usage.output_tokens)
         return msg.content[0].text

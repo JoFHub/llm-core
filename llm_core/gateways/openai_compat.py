@@ -102,11 +102,17 @@ class OpenAICompatGateway(LLMGateway):
         temperature: float,
         max_tokens: int,
     ) -> str:
+        # to_openai_messages() ist fuer normale {"role": "user"/"assistant",
+        # "content": str}-Historien ein No-Op, macht diese Methode aber auch fuer
+        # Aufrufer sicher, die (wie call_agent()s max_iterations-Fallback) noch
+        # das interne tool-Loop-Format uebergeben ({"input": dict} statt
+        # {"function": {"arguments": json_str}}) — das lehnt die OpenAI-kompatible
+        # API sonst mit 400 ab, weil bislang nur chat_with_tools() konvertiert hat.
         resp = self._client.chat.completions.create(
             model=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
-            messages=[{"role": "system", "content": system}] + messages,
+            messages=[{"role": "system", "content": system}] + to_openai_messages(messages),
         )
         used_model = resp.model or model_name
         _track(self._provider, used_model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
