@@ -121,3 +121,49 @@ def test_openai_compat_chat_with_history_converts_tool_loop_messages():
         assert tc["type"] == "function"
         assert tc["function"]["name"] == "search_documents"
         assert json.loads(tc["function"]["arguments"]) == {"query": "x"}
+
+
+# Manche Provider (u.a. Gemini via OpenRouter) liefern message.content=None
+# zurueck statt eines leeren Strings, z.B. bei einem verweigerten/leeren Turn.
+# call_agent()s max_iterations-Fallback reichte das bisher ungeprueft als
+# AgentResult.answer durch -> Aufrufer (memoria._guard_setext_underlines)
+# stuerzte mit 'NoneType' object has no attribute 'split' ab.
+def test_openai_compat_chat_with_history_handles_none_content():
+    from llm_core.gateways.openai_compat import OpenAICompatGateway
+
+    with patch("openai.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        MockOpenAI.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content=None))]
+        mock_response.model = "mistral-test"
+        mock_response.usage.prompt_tokens = 1
+        mock_response.usage.completion_tokens = 0
+        mock_client.chat.completions.create.return_value = mock_response
+
+        gateway = OpenAICompatGateway(provider="mistral", api_key="dummy")
+        result = gateway.chat_with_history(
+            system="s", messages=[{"role": "user", "content": "Frage"}],
+            model_name="mistral-test", temperature=0.1, max_tokens=100,
+        )
+        assert result == ""
+
+
+def test_anthropic_chat_with_history_handles_empty_content():
+    from llm_core.gateways.anthropic import AnthropicGateway
+
+    with patch("anthropic.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = []
+        mock_response.usage.input_tokens = 1
+        mock_response.usage.output_tokens = 0
+        mock_client.messages.create.return_value = mock_response
+
+        gateway = AnthropicGateway(api_key="dummy")
+        result = gateway.chat_with_history(
+            system="s", messages=[{"role": "user", "content": "Frage"}],
+            model_name="claude-test", temperature=0.1, max_tokens=100,
+        )
+        assert result == ""

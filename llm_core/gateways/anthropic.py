@@ -113,7 +113,9 @@ class AnthropicGateway(LLMGateway):
             messages=to_anthropic_messages(messages),
         )
         _track(model_name, msg.usage.input_tokens, msg.usage.output_tokens)
-        return msg.content[0].text
+        # content kann ein leerer Block sein (z.B. stop_reason ohne Text) —
+        # Aufrufer erwarten einen String, kein IndexError.
+        return msg.content[0].text if msg.content else ""
 
     def chat_structured(
         self,

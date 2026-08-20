@@ -91,7 +91,7 @@ class OpenAICompatGateway(LLMGateway):
         )
         used_model = resp.model or model_name
         _track(self._provider, used_model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
-        return resp.choices[0].message.content, used_model
+        return resp.choices[0].message.content or "", used_model
 
     def chat_with_history(
         self,
@@ -116,7 +116,10 @@ class OpenAICompatGateway(LLMGateway):
         )
         used_model = resp.model or model_name
         _track(self._provider, used_model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
-        return resp.choices[0].message.content
+        # content ist None, wenn der Provider (z.B. Gemini via OpenRouter) ohne
+        # Tool-Angebot trotzdem nur einen leeren/verweigerten Turn liefert —
+        # Aufrufer erwarten einen String, kein Optional.
+        return resp.choices[0].message.content or ""
 
     def chat_with_tools(
         self,
@@ -180,4 +183,4 @@ class OpenAICompatGateway(LLMGateway):
         )
         used_model = resp.model or model_name
         _track(self._provider, used_model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
-        return resp.choices[0].message.content, used_model
+        return resp.choices[0].message.content or "", used_model

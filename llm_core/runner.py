@@ -276,4 +276,4 @@ class LLMRunner:
             system=system + "\n\nBeantworte die Frage jetzt abschließend mit den vorliegenden Informationen.",
             messages=messages,
         )
-        return AgentResult(answer=final_text, steps=steps, messages=messages)
+        return AgentResult(answer=final_text or "", steps=steps, messages=messages)
