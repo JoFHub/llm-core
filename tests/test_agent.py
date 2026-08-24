@@ -95,6 +95,46 @@ def test_agent_max_iterations(search_tool):
     assert len(result.steps) == 3
 
 
+def test_agent_system_continuation_used_after_first_round(search_tool):
+    runner = _make_runner()
+    runner._gateway = MagicMock()
+
+    tc = ToolCall(id="call_1", name="search", input={"query": "Python"})
+    runner._gateway.chat_with_tools.side_effect = [
+        (None, [tc], [{"role": "user", "content": "Frage"}]),
+        ("Antwort.", [], []),
+    ]
+
+    runner.call_agent(
+        system="System mit teurer Anweisung.",
+        user="Frage?",
+        tools=[search_tool],
+        tool_executor=lambda n, i: "result",
+        system_continuation="System ohne teure Anweisung.",
+    )
+
+    first_call, second_call = runner._gateway.chat_with_tools.call_args_list
+    assert first_call.kwargs["system"] == "System mit teurer Anweisung."
+    assert second_call.kwargs["system"] == "System ohne teure Anweisung."
+
+
+def test_agent_system_continuation_ignored_without_second_round(search_tool):
+    runner = _make_runner()
+    runner._gateway = MagicMock()
+    runner._gateway.chat_with_tools.return_value = ("Antwort.", [], [])
+
+    runner.call_agent(
+        system="System.",
+        user="Frage?",
+        tools=[search_tool],
+        tool_executor=lambda n, i: "",
+        system_continuation="Sollte nie verwendet werden.",
+    )
+
+    runner._gateway.chat_with_tools.assert_called_once()
+    assert runner._gateway.chat_with_tools.call_args.kwargs["system"] == "System."
+
+
 def test_agent_prior_messages(search_tool):
     runner = _make_runner()
     runner._gateway = MagicMock()

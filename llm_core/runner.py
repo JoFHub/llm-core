@@ -224,17 +224,24 @@ class LLMRunner:
         tool_executor: ToolExecutor,
         prior_messages: list[dict] | None = None,
         max_iterations: int = 10,
+        system_continuation: str | None = None,
     ) -> AgentResult:
         """
         ReAct-Agent-Loop — funktioniert mit allen Backends die Tool Use unterstützen.
 
         Args:
-            system: System-Prompt
+            system: System-Prompt (Runde 1)
             user: Aktuelle User-Frage
             tools: Liste von Tool-Definitionen (backend-agnostisch)
             tool_executor: Callback (tool_name, tool_input) → result_string
             prior_messages: Bisherige Konversationshistorie (für Multi-Turn)
             max_iterations: Sicherheitslimit für Tool-Runden
+            system_continuation: Falls gesetzt, ersetzt `system` ab der zweiten
+                Runde (z.B. ohne teure Anweisungen, die nur für die
+                Abschlussantwort gelten — sonst werden sie bei jeder
+                Zwischenrunde erneut bezahlt, ohne dass die Runde eine
+                Abschlussantwort erzeugt). Der Max-Iterations-Fallback unten
+                verwendet weiterhin `system`, da dessen Antwort garantiert final ist.
 
         Returns:
             AgentResult mit answer, steps (Tool-Log) und messages (History)
@@ -243,8 +250,9 @@ class LLMRunner:
         steps: list[AgentStep] = []
 
         for iteration in range(max_iterations):
+            active_system = system if iteration == 0 or system_continuation is None else system_continuation
             text, tool_calls, messages = self._gateway.chat_with_tools(
-                system=system,
+                system=active_system,
                 messages=messages,
                 tools=tools,
                 model_name=self._config.model,
