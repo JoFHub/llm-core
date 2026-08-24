@@ -3,11 +3,28 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 
 from .base import LLMGateway
 from .._message_utils import tool_to_openai
+
+# Reasoning-Modelle (z.B. deepseek-r1) liefern ihre Denkspur roh als
+# <think>...</think> im content-Feld mit -- Ollama trennt das nur bei
+# Modellen mit nativer Unterstuetzung ueber ein eigenes Response-Feld.
+# Ungefiltert wuerde die Denkspur im Chat sichtbar auftauchen und bei
+# JSON-Extraktion die naive {-bis-}-Erkennung in LLMRunner._clean() stoeren.
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_THINK_UNCLOSED_RE = re.compile(r"<think>.*", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_thinking(content: str | None) -> str | None:
+    if not content:
+        return content
+    stripped = _THINK_BLOCK_RE.sub("", content)
+    stripped = _THINK_UNCLOSED_RE.sub("", stripped)  # z.B. bei max_tokens abgeschnitten
+    return stripped.strip()
 
 # Lokale Modelle auf CPU sind langsam: Kaltladen eines 7B-Modells dauert
 # 30–90 s, lange Antworten mehrere Minuten. Per Env-Var übersteuerbar.
@@ -85,7 +102,7 @@ class OllamaGateway(LLMGateway):
             payload["format"] = "json"
 
         result = self._post_chat(payload)
-        return result["message"]["content"], model_name
+        return _strip_thinking(result["message"]["content"]), model_name
 
     def chat_with_history(
         self,
@@ -103,7 +120,7 @@ class OllamaGateway(LLMGateway):
             "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": _NUM_CTX},
         }
         result = self._post_chat(payload)
-        return result["message"]["content"]
+        return _strip_thinking(result["message"]["content"])
 
     def _to_ollama_messages(self, messages: list[dict]) -> list[dict]:
         """Wie to_openai_messages, aber arguments als dict (nicht JSON-String) — Ollama-Format."""
@@ -156,7 +173,7 @@ class OllamaGateway(LLMGateway):
         }
         result = self._post_chat(payload)
         message = result["message"]
-        text = message.get("content") or None
+        text = _strip_thinking(message.get("content")) or None
         tool_calls = []
         for i, tc in enumerate(message.get("tool_calls") or []):
             f = tc.get("function", {})

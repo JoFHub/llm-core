@@ -36,6 +36,56 @@ def test_ollama_gateway_builds_correct_payload():
     assert captured["data"]["messages"][0]["role"] == "system"
 
 
+def test_ollama_gateway_strips_think_block():
+    """Reasoning-Modelle (z.B. deepseek-r1) liefern die Denkspur roh im
+    content mit -- Ollama trennt das nur bei Modellen mit nativer Support."""
+    from llm_core.gateways.ollama import OllamaGateway
+
+    gateway = OllamaGateway(host="http://localhost:11434")
+
+    def mock_urlopen(req, timeout=None):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(
+            {"message": {"content": "<think>Lass mich überlegen...</think>\n\nDie Antwort ist 42."}}
+        ).encode()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        return mock_resp
+
+    with patch("urllib.request.urlopen", mock_urlopen):
+        content, _ = gateway.chat(
+            system="s", user="u", model_name="deepseek-r1:14b",
+            temperature=0.1, max_tokens=512,
+        )
+
+    assert content == "Die Antwort ist 42."
+    assert "<think>" not in content
+
+
+def test_ollama_gateway_strips_unclosed_think_block():
+    """Bei max_tokens abgeschnittene Denkspur ohne schliessendes Tag."""
+    from llm_core.gateways.ollama import OllamaGateway
+
+    gateway = OllamaGateway(host="http://localhost:11434")
+
+    def mock_urlopen(req, timeout=None):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(
+            {"message": {"content": "<think>Noch am Ueberlegen, wurde abgeschnitten"}}
+        ).encode()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        return mock_resp
+
+    with patch("urllib.request.urlopen", mock_urlopen):
+        content, _ = gateway.chat(
+            system="s", user="u", model_name="deepseek-r1:14b",
+            temperature=0.1, max_tokens=512,
+        )
+
+    assert content == ""
+
+
 def test_ollama_gateway_raises_on_connection_error():
     from llm_core.gateways.ollama import OllamaGateway
     import urllib.error
