@@ -37,6 +37,7 @@ _PRICING: dict[str, tuple[float, float]] = {
     "google/gemini-2.0-flash":                (0.10,   0.40),
     "google/gemini-2.0-flash-lite":           (0.075,  0.30),
     "google/gemini-2.5-pro":                  (1.25,   10.0),
+    "google/gemini-3.7-flash":                (0.375,  1.875),
     # OpenRouter — Meta
     "meta-llama/llama-3.3-70b-instruct":      (0.12,   0.30),
     "meta-llama/llama-3.1-8b-instruct":       (0.055,  0.055),
