@@ -248,6 +248,7 @@ class LLMRunner:
         """
         messages = list(prior_messages or []) + [{"role": "user", "content": user}]
         steps: list[AgentStep] = []
+        nudged = False
 
         for iteration in range(max_iterations):
             active_system = system if iteration == 0 or system_continuation is None else system_continuation
@@ -261,6 +262,27 @@ class LLMRunner:
             )
 
             if not tool_calls:
+                # Runde 0 ohne Tool-Aufruf ist bei RAG-Fragen fast immer ein
+                # Zeichen, dass das Modell (v.a. kleinere/lokale) das Tool-Calling
+                # übersprungen und stattdessen direkt (halluziniert) geantwortet
+                # hat. Einmalig per Nudge zur Tool-Nutzung zwingen, statt die
+                # unbelegte Antwort ungeprüft durchzureichen.
+                if iteration == 0 and not nudged:
+                    logger.warning(
+                        f"[{self._config.model}] Runde 0 ohne Tool-Aufruf — "
+                        "erzwinge Tool-Nutzung per Nudge und wiederhole"
+                    )
+                    nudged = True
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "Du hast geantwortet, ohne eines der verfügbaren Tools "
+                            "aufzurufen. Antworte nicht aus eigenem Wissen oder mit "
+                            "Platzhaltern — rufe jetzt das passende Tool auf, um die "
+                            "benötigten Informationen aus den Dokumenten abzurufen."
+                        ),
+                    })
+                    continue
                 return AgentResult(answer=text or "", steps=steps, messages=messages)
 
             # Tools ausführen und Ergebnisse in History eintragen

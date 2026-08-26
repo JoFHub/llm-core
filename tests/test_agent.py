@@ -23,12 +23,16 @@ def _make_runner():
     return LLMRunner(LLMConfig(backend=LLMBackend.OLLAMA, model="llama3.2:3b"))
 
 
-def test_agent_no_tools_called(search_tool):
+def test_agent_no_tools_called_retries_once_then_returns(search_tool):
+    """Runde 0 ohne Tool-Aufruf löst einen Nudge-Retry aus; bleibt das Modell
+    dabei, wird die Antwort der zweiten Runde durchgereicht (statt der ersten,
+    unbelegten)."""
     runner = _make_runner()
     runner._gateway = MagicMock()
-    runner._gateway.chat_with_tools.return_value = (
-        "Die Antwort ist 42.", [], [{"role": "user", "content": "Frage"}]
-    )
+    runner._gateway.chat_with_tools.side_effect = [
+        ("Die Antwort ist 42.", [], [{"role": "user", "content": "Frage"}]),
+        ("Die Antwort ist immer noch 42.", [], [{"role": "user", "content": "Frage"}]),
+    ]
 
     result = runner.call_agent(
         system="Du bist ein Assistent.",
@@ -37,9 +41,36 @@ def test_agent_no_tools_called(search_tool):
         tool_executor=lambda name, inp: "",
     )
 
-    assert result.answer == "Die Antwort ist 42."
+    assert result.answer == "Die Antwort ist immer noch 42."
     assert result.steps == []
-    runner._gateway.chat_with_tools.assert_called_once()
+    assert runner._gateway.chat_with_tools.call_count == 2
+
+
+def test_agent_recovers_via_nudge_when_first_round_skips_tools(search_tool):
+    """Reproduziert den Ollama-Bug: Modell antwortet in Runde 0 halluziniert
+    ohne Tool-Aufruf; der Nudge bringt es dazu, in Runde 1 doch das Tool zu
+    rufen, sodass die finale Antwort auf echten Tool-Ergebnissen beruht."""
+    runner = _make_runner()
+    runner._gateway = MagicMock()
+    tc = ToolCall(id="call_1", name="search", input={"query": "Python"})
+    runner._gateway.chat_with_tools.side_effect = [
+        ("Ich denke die Antwort ist X.", [], [{"role": "user", "content": "Frage"}]),
+        (None, [tc], [{"role": "user", "content": "Frage"}]),
+        ("Python ist eine Programmiersprache.", [], []),
+    ]
+    tool_executor = MagicMock(return_value="Python: eine Programmiersprache.")
+
+    result = runner.call_agent(
+        system="Du bist ein Assistent.",
+        user="Was ist Python?",
+        tools=[search_tool],
+        tool_executor=tool_executor,
+    )
+
+    assert result.answer == "Python ist eine Programmiersprache."
+    assert len(result.steps) == 1
+    tool_executor.assert_called_once_with("search", {"query": "Python"})
+    assert runner._gateway.chat_with_tools.call_count == 3
 
 
 def test_agent_one_tool_call(search_tool):
@@ -118,21 +149,28 @@ def test_agent_system_continuation_used_after_first_round(search_tool):
     assert second_call.kwargs["system"] == "System ohne teure Anweisung."
 
 
-def test_agent_system_continuation_ignored_without_second_round(search_tool):
+def test_agent_system_continuation_ignored_when_max_iterations_is_one(search_tool):
+    """Mit max_iterations=1 kann der Nudge-Retry nicht mehr laufen (die
+    for-Schleife endet nach Runde 0) — der Max-Iterations-Fallback greift und
+    nutzt bewusst `system`, nicht `system_continuation` (dessen Antwort ist
+    garantiert final)."""
     runner = _make_runner()
     runner._gateway = MagicMock()
     runner._gateway.chat_with_tools.return_value = ("Antwort.", [], [])
+    runner._gateway.chat_with_history = MagicMock(return_value="Finale Antwort.")
 
-    runner.call_agent(
+    result = runner.call_agent(
         system="System.",
         user="Frage?",
         tools=[search_tool],
         tool_executor=lambda n, i: "",
         system_continuation="Sollte nie verwendet werden.",
+        max_iterations=1,
     )
 
     runner._gateway.chat_with_tools.assert_called_once()
-    assert runner._gateway.chat_with_tools.call_args.kwargs["system"] == "System."
+    assert "System." in runner._gateway.chat_with_history.call_args.kwargs["system"]
+    assert result.answer == "Finale Antwort."
 
 
 def test_agent_prior_messages(search_tool):
@@ -150,7 +188,7 @@ def test_agent_prior_messages(search_tool):
         prior_messages=prior,
     )
 
-    call_args = runner._gateway.chat_with_tools.call_args
+    call_args = runner._gateway.chat_with_tools.call_args_list[0]
     messages_passed = call_args.kwargs["messages"]
     assert messages_passed[0]["content"] == "Vorherige Frage"
     assert messages_passed[-1]["content"] == "Neue Frage."
