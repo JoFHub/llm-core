@@ -55,7 +55,19 @@ _PRICING: dict[str, tuple[float, float]] = {
 }
 
 
-def _cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+# Anthropic Prompt Caching (ephemeral, 5-Minuten-TTL): Cache-Schreiben kostet
+# 1,25x des Input-Preises, Cache-Lesen 0,1x — Stand 2025, ohne Gewähr.
+_CACHE_WRITE_MULT = 1.25
+_CACHE_READ_MULT = 0.1
+
+
+def _cost_usd(
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cache_creation_tokens: int = 0,
+    cache_read_tokens: int = 0,
+) -> float:
     key = model.lower()
     pricing = _PRICING.get(key)
     if not pricing:
@@ -66,7 +78,12 @@ def _cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
     if not pricing:
         return 0.0
     in_price, out_price = pricing
-    return (prompt_tokens * in_price + completion_tokens * out_price) / 1_000_000
+    return (
+        prompt_tokens * in_price
+        + completion_tokens * out_price
+        + cache_creation_tokens * in_price * _CACHE_WRITE_MULT
+        + cache_read_tokens * in_price * _CACHE_READ_MULT
+    ) / 1_000_000
 
 
 def _db_path() -> Path:
@@ -80,15 +97,22 @@ def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(str(path))
     conn.execute("""
         CREATE TABLE IF NOT EXISTS llm_usage (
-            id                INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp         TEXT NOT NULL,
-            provider          TEXT NOT NULL,
-            model             TEXT NOT NULL,
-            prompt_tokens     INTEGER NOT NULL DEFAULT 0,
-            completion_tokens INTEGER NOT NULL DEFAULT 0,
-            cost_usd          REAL NOT NULL DEFAULT 0.0
+            id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp              TEXT NOT NULL,
+            provider               TEXT NOT NULL,
+            model                  TEXT NOT NULL,
+            prompt_tokens          INTEGER NOT NULL DEFAULT 0,
+            completion_tokens      INTEGER NOT NULL DEFAULT 0,
+            cost_usd               REAL NOT NULL DEFAULT 0.0,
+            cache_creation_tokens  INTEGER NOT NULL DEFAULT 0,
+            cache_read_tokens      INTEGER NOT NULL DEFAULT 0
         )
     """)
+    for col in ("cache_creation_tokens", "cache_read_tokens"):
+        try:
+            conn.execute(f"ALTER TABLE llm_usage ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Spalte existiert bereits (Alt-DB oder frisch per CREATE TABLE angelegt)
     conn.commit()
     return conn
 
@@ -97,17 +121,26 @@ def _connect() -> sqlite3.Connection:
 # Öffentliche API
 # ---------------------------------------------------------------------------
 
-def record(provider: str, model: str, prompt_tokens: int, completion_tokens: int) -> None:
+def record(
+    provider: str,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cache_creation_tokens: int = 0,
+    cache_read_tokens: int = 0,
+) -> None:
     """Speichert einen LLM-Aufruf mit berechneten Kosten. Niemals blockierend."""
-    cost = _cost_usd(model, prompt_tokens, completion_tokens)
+    cost = _cost_usd(model, prompt_tokens, completion_tokens, cache_creation_tokens, cache_read_tokens)
     ts = datetime.now(timezone.utc).isoformat()
     try:
         conn = _connect()
         conn.execute(
             "INSERT INTO llm_usage "
-            "(timestamp, provider, model, prompt_tokens, completion_tokens, cost_usd) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (ts, provider, model, prompt_tokens, completion_tokens, cost),
+            "(timestamp, provider, model, prompt_tokens, completion_tokens, cost_usd, "
+            "cache_creation_tokens, cache_read_tokens) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (ts, provider, model, prompt_tokens, completion_tokens, cost,
+             cache_creation_tokens, cache_read_tokens),
         )
         conn.commit()
         conn.close()
@@ -122,14 +155,16 @@ def daily_summary(days: int = 30) -> list[dict]:
         conn = _connect()
         rows = conn.execute(
             "SELECT substr(timestamp, 1, 10) as day, "
-            "SUM(cost_usd), SUM(prompt_tokens), SUM(completion_tokens) "
+            "SUM(cost_usd), SUM(prompt_tokens), SUM(completion_tokens), "
+            "SUM(cache_creation_tokens), SUM(cache_read_tokens) "
             "FROM llm_usage WHERE timestamp >= ? "
             "GROUP BY day ORDER BY day",
             (since,),
         ).fetchall()
         conn.close()
         return [
-            {"date": r[0], "cost_usd": r[1], "prompt_tokens": r[2], "completion_tokens": r[3]}
+            {"date": r[0], "cost_usd": r[1], "prompt_tokens": r[2], "completion_tokens": r[3],
+             "cache_creation_tokens": r[4], "cache_read_tokens": r[5]}
             for r in rows
         ]
     except Exception:
@@ -143,7 +178,8 @@ def model_summary(days: int = 30) -> list[dict]:
         conn = _connect()
         rows = conn.execute(
             "SELECT model, provider, SUM(cost_usd), COUNT(*), "
-            "SUM(prompt_tokens), SUM(completion_tokens) "
+            "SUM(prompt_tokens), SUM(completion_tokens), "
+            "SUM(cache_creation_tokens), SUM(cache_read_tokens) "
             "FROM llm_usage WHERE timestamp >= ? "
             "GROUP BY model, provider ORDER BY SUM(cost_usd) DESC",
             (since,),
@@ -151,7 +187,8 @@ def model_summary(days: int = 30) -> list[dict]:
         conn.close()
         return [
             {"model": r[0], "provider": r[1], "cost_usd": r[2],
-             "calls": r[3], "prompt_tokens": r[4], "completion_tokens": r[5]}
+             "calls": r[3], "prompt_tokens": r[4], "completion_tokens": r[5],
+             "cache_creation_tokens": r[6], "cache_read_tokens": r[7]}
             for r in rows
         ]
     except Exception:

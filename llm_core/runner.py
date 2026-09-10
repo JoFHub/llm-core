@@ -174,8 +174,15 @@ class LLMRunner:
                     time.sleep(delay)
         raise RuntimeError(f"LLM-Aufruf fehlgeschlagen nach {self._config.retry.retries + 1} Versuchen") from last_exc
 
-    def call_chat_with_history(self, system: str, messages: list[dict]) -> str:
-        """Chat mit vollständiger Konversationshistorie."""
+    def call_chat_with_history(
+        self, system: str, messages: list[dict], conversation_id: str | None = None,
+    ) -> str:
+        """Chat mit vollständiger Konversationshistorie.
+
+        conversation_id: optionaler stabiler Schlüssel für Provider mit
+            schlüsselbasiertem Prompt-Caching (aktuell Mistral); andere
+            Gateways ignorieren ihn.
+        """
         if hasattr(self._gateway, "chat_with_history"):
             return self._gateway.chat_with_history(
                 system=system,
@@ -183,6 +190,7 @@ class LLMRunner:
                 model_name=self._config.model,
                 temperature=self._config.temperature,
                 max_tokens=self._config.max_tokens,
+                conversation_id=conversation_id,
             )
         # Fallback: letzten User-Turn verwenden
         user_msg = next(
@@ -225,6 +233,7 @@ class LLMRunner:
         prior_messages: list[dict] | None = None,
         max_iterations: int = 10,
         system_continuation: str | None = None,
+        conversation_id: str | None = None,
     ) -> AgentResult:
         """
         ReAct-Agent-Loop — funktioniert mit allen Backends die Tool Use unterstützen.
@@ -242,6 +251,9 @@ class LLMRunner:
                 Zwischenrunde erneut bezahlt, ohne dass die Runde eine
                 Abschlussantwort erzeugt). Der Max-Iterations-Fallback unten
                 verwendet weiterhin `system`, da dessen Antwort garantiert final ist.
+            conversation_id: optionaler stabiler Schlüssel für Provider mit
+                schlüsselbasiertem Prompt-Caching (aktuell Mistral); andere
+                Gateways ignorieren ihn.
 
         Returns:
             AgentResult mit answer, steps (Tool-Log) und messages (History)
@@ -259,6 +271,7 @@ class LLMRunner:
                 model_name=self._config.model,
                 temperature=self._config.temperature,
                 max_tokens=self._config.max_tokens,
+                conversation_id=conversation_id,
             )
 
             if not tool_calls:
@@ -305,5 +318,6 @@ class LLMRunner:
         final_text = self.call_chat_with_history(
             system=system + "\n\nBeantworte die Frage jetzt abschließend mit den vorliegenden Informationen.",
             messages=messages,
+            conversation_id=conversation_id,
         )
         return AgentResult(answer=final_text or "", steps=steps, messages=messages)

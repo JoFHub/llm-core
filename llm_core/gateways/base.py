@@ -42,6 +42,7 @@ class LLMGateway(ABC):
         model_name: str,
         temperature: float,
         max_tokens: int,
+        conversation_id: str | None = None,
     ) -> str:
         raise NotImplementedError(f"{type(self).__name__} unterstützt keine Message-History.")
 
@@ -54,9 +55,15 @@ class LLMGateway(ABC):
         model_name: str,
         temperature: float,
         max_tokens: int,
+        conversation_id: str | None = None,
     ) -> tuple[str | None, list, list[dict]]:
         """
         Einzelner LLM-Turn mit Tool-Use-Unterstützung.
+
+        conversation_id: optionaler stabiler Schlüssel für Provider mit
+            schlüsselbasiertem Prompt-Caching (z.B. Mistrals prompt_cache_key).
+            Gateways ohne dieses Konzept (Ollama, Anthropic — nutzt stattdessen
+            explizite cache_control-Breakpoints) ignorieren den Parameter.
 
         Returns:
             (text, tool_calls, updated_messages)

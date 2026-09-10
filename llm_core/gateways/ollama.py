@@ -112,6 +112,7 @@ class OllamaGateway(LLMGateway):
         model_name: str,
         temperature: float,
         max_tokens: int,
+        conversation_id: str | None = None,  # kein Caching-Konzept in Ollama, unbenutzt
     ) -> str:
         payload = {
             "model": model_name,
@@ -161,6 +162,7 @@ class OllamaGateway(LLMGateway):
         model_name: str,
         temperature: float,
         max_tokens: int,
+        conversation_id: str | None = None,  # kein Caching-Konzept in Ollama, unbenutzt
     ) -> tuple[str | None, list, list[dict]]:
         from ..agent import ToolCall
 

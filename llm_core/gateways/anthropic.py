@@ -23,12 +23,61 @@ except ImportError:
     _AVAILABLE = False
 
 
-def _track(model: str, in_tok: int, out_tok: int) -> None:
+def _track(model: str, usage) -> None:
     try:
         from llm_core.cost_tracker import record
-        record("anthropic", model, in_tok, out_tok)
+        record(
+            "anthropic", model,
+            usage.input_tokens, usage.output_tokens,
+            cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+            cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+        )
     except Exception:
         pass
+
+
+def _cacheable_system(system: str) -> str | list[dict]:
+    """System-Prompt als eigenen Cache-Breakpoint markieren -- identisch ueber
+    alle Aufrufe desselben Profils/derselben Konversation hinweg, klassischer
+    Cache-Kandidat. Unterhalb der Mindestlaenge (Claude: 1024 Tokens fuer
+    Sonnet/Opus) ignoriert die API cache_control folgenlos, kein Nachteil."""
+    if not system:
+        return system
+    return [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+
+
+def _mark_last_message_cacheable(messages: list[dict]) -> list[dict]:
+    """Cache-Breakpoint auf die letzte Nachricht -- Standardmuster fuer
+    Multi-Turn-Caching: der Praefix bis zur vorherigen Bruchstelle wurde im
+    letzten Request an genau dieser (dann vorletzten) Position bereits
+    geschrieben und wird hier aus dem Server-Cache gelesen, sofern er
+    byte-identisch ist und die 5-Minuten-TTL noch laeuft."""
+    if not messages:
+        return messages
+    messages = list(messages)
+    last = dict(messages[-1])
+    content = last.get("content")
+    cache_control = {"type": "ephemeral"}
+    if isinstance(content, str) and content:
+        last["content"] = [{"type": "text", "text": content, "cache_control": cache_control}]
+        messages[-1] = last
+    elif isinstance(content, list) and content:
+        content = [dict(b) for b in content]
+        content[-1] = {**content[-1], "cache_control": cache_control}
+        last["content"] = content
+        messages[-1] = last
+    return messages
+
+
+def _mark_last_tool_cacheable(tools: list[dict]) -> list[dict]:
+    """Ein Breakpoint auf den letzten Toolschema-Eintrag cached die gesamte
+    (statische, oft grosse) Tool-Liste -- wirkt ueber alle Runden eines
+    Agent-Loops sowie ueber Folgeturns derselben Konversation hinweg."""
+    if not tools:
+        return tools
+    tools = [dict(t) for t in tools]
+    tools[-1] = {**tools[-1], "cache_control": {"type": "ephemeral"}}
+    return tools
 
 
 class AnthropicGateway(LLMGateway):
@@ -58,10 +107,10 @@ class AnthropicGateway(LLMGateway):
             model=model_name,
             max_tokens=max_tokens,
             temperature=temperature,
-            system=system,
+            system=_cacheable_system(system),
             messages=[{"role": "user", "content": user_content}],
         )
-        _track(model_name, msg.usage.input_tokens, msg.usage.output_tokens)
+        _track(model_name, msg.usage)
         return msg.content[0].text, model_name
 
     def chat_multimodal(
@@ -84,10 +133,10 @@ class AnthropicGateway(LLMGateway):
             model=model_name,
             max_tokens=max_tokens,
             temperature=temperature,
-            system=system,
+            system=_cacheable_system(system),
             messages=[{"role": "user", "content": content}],
         )
-        _track(model_name, msg.usage.input_tokens, msg.usage.output_tokens)
+        _track(model_name, msg.usage)
         return msg.content[0].text, model_name
 
     def chat_with_history(
@@ -98,6 +147,7 @@ class AnthropicGateway(LLMGateway):
         model_name: str,
         temperature: float,
         max_tokens: int,
+        conversation_id: str | None = None,  # ungenutzt: cache_control-Breakpoints statt Cache-Key
     ) -> str:
         # to_anthropic_messages() ist fuer normale {"role": "user"/"assistant",
         # "content": str}-Historien ein No-Op, macht diese Methode aber auch fuer
@@ -109,10 +159,10 @@ class AnthropicGateway(LLMGateway):
             model=model_name,
             max_tokens=max_tokens,
             temperature=temperature,
-            system=system,
-            messages=to_anthropic_messages(messages),
+            system=_cacheable_system(system),
+            messages=_mark_last_message_cacheable(to_anthropic_messages(messages)),
         )
-        _track(model_name, msg.usage.input_tokens, msg.usage.output_tokens)
+        _track(model_name, msg.usage)
         # content kann ein leerer Block sein (z.B. stop_reason ohne Text) —
         # Aufrufer erwarten einen String, kein IndexError.
         return msg.content[0].text if msg.content else ""
@@ -137,13 +187,13 @@ class AnthropicGateway(LLMGateway):
 
         response = self._client.messages.parse(
             model=model_name,
-            system=system,
+            system=_cacheable_system(system),
             messages=[{"role": "user", "content": user}],
             max_tokens=max_tokens,
             output_format=output_type,
             **kwargs,
         )
-        _track(model_name, response.usage.input_tokens, response.usage.output_tokens)
+        _track(model_name, response.usage)
         return response.parsed_output
 
     def chat_with_tools(
@@ -155,19 +205,20 @@ class AnthropicGateway(LLMGateway):
         model_name: str,
         temperature: float,
         max_tokens: int,
+        conversation_id: str | None = None,  # ungenutzt: cache_control-Breakpoints statt Cache-Key
     ) -> tuple[str | None, list, list[dict]]:
-        ant_messages = to_anthropic_messages(messages)
-        ant_tools = [tool_to_anthropic(t) for t in tools]
+        ant_messages = _mark_last_message_cacheable(to_anthropic_messages(messages))
+        ant_tools = _mark_last_tool_cacheable([tool_to_anthropic(t) for t in tools])
 
         response = self._client.messages.create(
             model=model_name,
             max_tokens=max_tokens,
             temperature=temperature,
-            system=system,
+            system=_cacheable_system(system),
             messages=ant_messages,
             tools=ant_tools,
         )
-        _track(model_name, response.usage.input_tokens, response.usage.output_tokens)
+        _track(model_name, response.usage)
 
         text, tool_calls = from_anthropic_response(response.content)
 

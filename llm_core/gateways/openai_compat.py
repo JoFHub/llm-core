@@ -32,12 +32,36 @@ except ImportError:
     _AVAILABLE = False
 
 
-def _track(provider: str, model: str, in_tok: int, out_tok: int) -> None:
+def _track(provider: str, model: str, usage) -> None:
+    if not usage:
+        return
     try:
         from llm_core.cost_tracker import record
-        record(provider, model, in_tok, out_tok)
+        # OpenAI-Format (von OpenAI selbst automatisch, von Mistral bei
+        # gesetztem prompt_cache_key): usage.prompt_tokens zaehlt Cache-Treffer
+        # MIT -- anders als Anthropic (dort exklusive, s. gateways/anthropic.py)
+        # muss der gecachte Anteil hier herausgerechnet werden, sonst würde er
+        # doppelt verrechnet (einmal voll ueber prompt_tokens, einmal zu 10%
+        # ueber cache_read_tokens).
+        details = getattr(usage, "prompt_tokens_details", None)
+        cached = getattr(details, "cached_tokens", 0) or 0
+        record(
+            provider, model,
+            usage.prompt_tokens - cached, usage.completion_tokens,
+            cache_read_tokens=cached,
+        )
     except Exception:
         pass
+
+
+def _cache_key_kwargs(provider: str, conversation_id: str | None) -> dict:
+    """Mistral cached Prompt-Praefixe ueber einen stabilen `prompt_cache_key`
+    (Top-Level-Requestfeld, kein Message-Format wie bei Anthropic/OpenRouter
+    noetig) -- s. docs.mistral.ai/studio-api/conversations/advanced/prompt-caching.
+    Andere Provider kennen das Feld nicht, deshalb nur fuer Mistral gesetzt."""
+    if provider == "mistral" and conversation_id:
+        return {"extra_body": {"prompt_cache_key": conversation_id}}
+    return {}
 
 
 class OpenAICompatGateway(LLMGateway):
@@ -90,7 +114,7 @@ class OpenAICompatGateway(LLMGateway):
             **kwargs,
         )
         used_model = resp.model or model_name
-        _track(self._provider, used_model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
+        _track(self._provider, used_model, resp.usage)
         return resp.choices[0].message.content or "", used_model
 
     def chat_with_history(
@@ -101,6 +125,7 @@ class OpenAICompatGateway(LLMGateway):
         model_name: str,
         temperature: float,
         max_tokens: int,
+        conversation_id: str | None = None,
     ) -> str:
         # to_openai_messages() ist fuer normale {"role": "user"/"assistant",
         # "content": str}-Historien ein No-Op, macht diese Methode aber auch fuer
@@ -113,9 +138,10 @@ class OpenAICompatGateway(LLMGateway):
             temperature=temperature,
             max_tokens=max_tokens,
             messages=[{"role": "system", "content": system}] + to_openai_messages(messages),
+            **_cache_key_kwargs(self._provider, conversation_id),
         )
         used_model = resp.model or model_name
-        _track(self._provider, used_model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
+        _track(self._provider, used_model, resp.usage)
         # content ist None, wenn der Provider (z.B. Gemini via OpenRouter) ohne
         # Tool-Angebot trotzdem nur einen leeren/verweigerten Turn liefert —
         # Aufrufer erwarten einen String, kein Optional.
@@ -130,6 +156,7 @@ class OpenAICompatGateway(LLMGateway):
         model_name: str,
         temperature: float,
         max_tokens: int,
+        conversation_id: str | None = None,
     ) -> tuple[str | None, list, list[dict]]:
         oai_messages = [{"role": "system", "content": system}] + to_openai_messages(messages)
         oai_tools = [tool_to_openai(t) for t in tools]
@@ -141,10 +168,10 @@ class OpenAICompatGateway(LLMGateway):
             messages=oai_messages,
             tools=oai_tools,
             tool_choice="auto",
+            **_cache_key_kwargs(self._provider, conversation_id),
         )
         used_model = resp.model or model_name
-        if resp.usage:
-            _track(self._provider, used_model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
+        _track(self._provider, used_model, resp.usage)
 
         text, tool_calls = from_openai_response(resp.choices[0])
 
@@ -182,5 +209,5 @@ class OpenAICompatGateway(LLMGateway):
             ],
         )
         used_model = resp.model or model_name
-        _track(self._provider, used_model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
+        _track(self._provider, used_model, resp.usage)
         return resp.choices[0].message.content or "", used_model
