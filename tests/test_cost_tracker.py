@@ -84,6 +84,25 @@ def test_daily_summary_includes_cache_tokens():
     assert summary[0]["cache_read_tokens"] == 300
 
 
+def test_cost_usd_override_replaces_multiplier_estimate():
+    """OpenRouter liefert die reale USD-Ersparnis direkt -- record() muss
+    diesen Wert unveraendert uebernehmen statt der Anthropic-spezifischen
+    Multiplikator-Schaetzung, die fuer andere Unterbau-Provider falsch waere."""
+    from llm_core.cost_tracker import record, model_summary
+
+    record(
+        "openrouter", "google/gemini-2.5-flash",
+        prompt_tokens=1000, completion_tokens=0,
+        cache_creation_tokens=0, cache_read_tokens=1000,
+        cost_usd_override=0.001234,
+    )
+    summary = model_summary(days=1)
+    row = next(s for s in summary if s["model"] == "google/gemini-2.5-flash")
+    assert row["cost_usd"] == pytest.approx(0.001234)
+    # Token-Spalten bleiben unabhaengig vom Override erhalten (Auswertung)
+    assert row["cache_read_tokens"] == 1000
+
+
 def test_migration_adds_cache_columns_to_existing_db(tmp_path, monkeypatch):
     """Bestehende costs.sqlite (vor diesem Feature) hat die neuen Spalten
     noch nicht -- _connect() muss sie nachruesten statt abzustuerzen."""

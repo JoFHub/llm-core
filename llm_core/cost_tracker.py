@@ -128,9 +128,21 @@ def record(
     completion_tokens: int,
     cache_creation_tokens: int = 0,
     cache_read_tokens: int = 0,
+    cost_usd_override: float | None = None,
 ) -> None:
-    """Speichert einen LLM-Aufruf mit berechneten Kosten. Niemals blockierend."""
-    cost = _cost_usd(model, prompt_tokens, completion_tokens, cache_creation_tokens, cache_read_tokens)
+    """Speichert einen LLM-Aufruf mit berechneten Kosten. Niemals blockierend.
+
+    cost_usd_override: manche Provider (OpenRouter) liefern den tatsaechlichen
+    Ist-Preis inkl. Cache-Rabatt direkt in der Response (usage.cost) -- die
+    fixe Multiplikator-Schaetzung (_CACHE_WRITE_MULT/_CACHE_READ_MULT,
+    eigentlich Anthropic-Konditionen) waere fuer andere Unterbau-Provider
+    falsch. Wenn gesetzt, ersetzt dieser Wert die Schaetzung; die
+    Token-Spalten werden trotzdem unveraendert gespeichert (Auswertung/
+    Transparenz)."""
+    cost = (
+        cost_usd_override if cost_usd_override is not None
+        else _cost_usd(model, prompt_tokens, completion_tokens, cache_creation_tokens, cache_read_tokens)
+    )
     ts = datetime.now(timezone.utc).isoformat()
     try:
         conn = _connect()

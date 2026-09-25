@@ -81,6 +81,10 @@ def _mark_last_tool_cacheable(tools: list[dict]) -> list[dict]:
 
 
 class AnthropicGateway(LLMGateway):
+    # `temperature` wird nicht an die API weitergereicht: seit anthropic-sdk 1.x
+    # kennt Messages.create() diesen Parameter nicht mehr (ersetzt durch
+    # `output_config.effort`). Bleibt in den Methodensignaturen fuer die
+    # gemeinsame LLMGateway-Schnittstelle, wird hier aber ignoriert.
     def __init__(self, api_key: str | None = None) -> None:
         if not _AVAILABLE:
             raise ImportError("pip install anthropic")
@@ -106,7 +110,6 @@ class AnthropicGateway(LLMGateway):
         msg = self._client.messages.create(
             model=model_name,
             max_tokens=max_tokens,
-            temperature=temperature,
             system=_cacheable_system(system),
             messages=[{"role": "user", "content": user_content}],
         )
@@ -132,7 +135,6 @@ class AnthropicGateway(LLMGateway):
         msg = self._client.messages.create(
             model=model_name,
             max_tokens=max_tokens,
-            temperature=temperature,
             system=_cacheable_system(system),
             messages=[{"role": "user", "content": content}],
         )
@@ -158,7 +160,6 @@ class AnthropicGateway(LLMGateway):
         msg = self._client.messages.create(
             model=model_name,
             max_tokens=max_tokens,
-            temperature=temperature,
             system=_cacheable_system(system),
             messages=_mark_last_message_cacheable(to_anthropic_messages(messages)),
         )
@@ -181,9 +182,6 @@ class AnthropicGateway(LLMGateway):
         kwargs: dict = {}
         if thinking:
             kwargs["thinking"] = {"type": "adaptive"}
-            kwargs["temperature"] = 1  # Pflicht wenn thinking aktiv
-        else:
-            kwargs["temperature"] = temperature
 
         response = self._client.messages.parse(
             model=model_name,
@@ -213,7 +211,6 @@ class AnthropicGateway(LLMGateway):
         response = self._client.messages.create(
             model=model_name,
             max_tokens=max_tokens,
-            temperature=temperature,
             system=_cacheable_system(system),
             messages=ant_messages,
             tools=ant_tools,

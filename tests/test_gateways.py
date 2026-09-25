@@ -124,7 +124,9 @@ def test_openai_compat_mistral_sends_prompt_cache_key():
         assert kwargs["extra_body"] == {"prompt_cache_key": "conv-42"}
 
 
-def test_openai_compat_non_mistral_ignores_conversation_id():
+def test_openai_compat_openai_direct_ignores_conversation_id():
+    """Weder prompt_cache_key (Mistral) noch session_id (OpenRouter) sind
+    OpenAI direkt bekannt -- kein extra_body ohne einen der beiden Provider."""
     from llm_core.gateways.openai_compat import OpenAICompatGateway
 
     with patch("openai.OpenAI") as MockOpenAI:
@@ -132,7 +134,34 @@ def test_openai_compat_non_mistral_ignores_conversation_id():
         MockOpenAI.return_value = mock_client
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content="Antwort"))]
-        mock_response.model = "openrouter-model"
+        mock_response.model = "gpt-4o"
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 10
+        mock_response.usage.prompt_tokens_details = None
+        mock_client.chat.completions.create.return_value = mock_response
+
+        gateway = OpenAICompatGateway(provider="openai", api_key="dummy")
+        gateway.chat_with_history(
+            system="s", messages=[{"role": "user", "content": "Frage"}],
+            model_name="gpt-4o", temperature=0.1, max_tokens=100,
+            conversation_id="conv-42",
+        )
+
+        kwargs = mock_client.chat.completions.create.call_args.kwargs
+        assert "extra_body" not in kwargs
+
+
+def test_openai_compat_openrouter_sends_session_id():
+    """OpenRouter kennt kein prompt_cache_key, aber session_id fuers Provider-
+    Sticky-Routing -- erhoeht die Trefferquote der cache_control-Breakpoints."""
+    from llm_core.gateways.openai_compat import OpenAICompatGateway
+
+    with patch("openai.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        MockOpenAI.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Antwort"))]
+        mock_response.model = "anthropic/claude-haiku-4-5"
         mock_response.usage.prompt_tokens = 100
         mock_response.usage.completion_tokens = 10
         mock_response.usage.prompt_tokens_details = None
@@ -141,12 +170,181 @@ def test_openai_compat_non_mistral_ignores_conversation_id():
         gateway = OpenAICompatGateway(provider="openrouter", api_key="dummy")
         gateway.chat_with_history(
             system="s", messages=[{"role": "user", "content": "Frage"}],
-            model_name="openrouter-model", temperature=0.1, max_tokens=100,
+            model_name="anthropic/claude-haiku-4-5", temperature=0.1, max_tokens=100,
             conversation_id="conv-42",
         )
 
         kwargs = mock_client.chat.completions.create.call_args.kwargs
-        assert "extra_body" not in kwargs
+        assert kwargs["extra_body"] == {"session_id": "conv-42"}
+
+
+def test_openai_compat_openrouter_chat_with_history_sets_cache_breakpoints():
+    """OpenRouter reicht dieselbe cache_control-Syntax wie Anthropic direkt an
+    Anthropic-/Gemini-/Qwen-Modelle durch -- System-Prompt und letzte Nachricht
+    muessen als Breakpoints markiert sein, Mistral/OpenAI bleiben unveraendert."""
+    from llm_core.gateways.openai_compat import OpenAICompatGateway
+
+    with patch("openai.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        MockOpenAI.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Antwort"))]
+        mock_response.model = "anthropic/claude-haiku-4-5"
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 10
+        mock_response.usage.prompt_tokens_details = None
+        mock_client.chat.completions.create.return_value = mock_response
+
+        gateway = OpenAICompatGateway(provider="openrouter", api_key="dummy")
+        gateway.chat_with_history(
+            system="Systemprompt",
+            messages=[
+                {"role": "user", "content": "Erste Frage"},
+                {"role": "assistant", "content": "Erste Antwort"},
+                {"role": "user", "content": "Zweite Frage"},
+            ],
+            model_name="anthropic/claude-haiku-4-5", temperature=0.1, max_tokens=100,
+        )
+
+        kwargs = mock_client.chat.completions.create.call_args.kwargs
+        sent = kwargs["messages"]
+        assert sent[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+        assert sent[0]["content"][0]["text"] == "Systemprompt"
+        # nur die letzte Nachricht traegt den Breakpoint, aeltere bleiben
+        # unveraendert (einfacher String statt Block-Liste)
+        assert sent[1]["content"] == "Erste Frage"
+        assert sent[2]["content"] == "Erste Antwort"
+        assert sent[3]["content"][0]["cache_control"] == {"type": "ephemeral"}
+        assert sent[3]["content"][0]["text"] == "Zweite Frage"
+
+
+def test_openai_compat_openrouter_chat_with_tools_sets_tool_breakpoint():
+    from llm_core.agent import Tool
+    from llm_core.gateways.openai_compat import OpenAICompatGateway
+
+    with patch("openai.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        MockOpenAI.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Antwort", tool_calls=None))]
+        mock_response.model = "anthropic/claude-haiku-4-5"
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 10
+        mock_response.usage.prompt_tokens_details = None
+        mock_client.chat.completions.create.return_value = mock_response
+
+        gateway = OpenAICompatGateway(provider="openrouter", api_key="dummy")
+        tools = [
+            Tool(name="tool_a", description="A", parameters={"type": "object", "properties": {}}),
+            Tool(name="tool_b", description="B", parameters={"type": "object", "properties": {}}),
+        ]
+        gateway.chat_with_tools(
+            system="Systemprompt",
+            messages=[{"role": "user", "content": "Frage"}],
+            tools=tools,
+            model_name="anthropic/claude-haiku-4-5", temperature=0.1, max_tokens=100,
+        )
+
+        kwargs = mock_client.chat.completions.create.call_args.kwargs
+        sent_tools = kwargs["tools"]
+        assert "cache_control" not in sent_tools[0]
+        assert sent_tools[1]["cache_control"] == {"type": "ephemeral"}
+        assert kwargs["messages"][-1]["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_openai_compat_mistral_keeps_plain_string_content():
+    """Regressionsschutz: der Block-Content-Umbau ist openrouter-exklusiv --
+    Mistral bekommt weiterhin einfache Strings statt Content-Bloecke."""
+    from llm_core.gateways.openai_compat import OpenAICompatGateway
+
+    with patch("openai.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        MockOpenAI.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Antwort"))]
+        mock_response.model = "mistral-large-latest"
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 10
+        mock_response.usage.prompt_tokens_details = None
+        mock_client.chat.completions.create.return_value = mock_response
+
+        gateway = OpenAICompatGateway(provider="mistral", api_key="dummy")
+        gateway.chat_with_history(
+            system="Systemprompt",
+            messages=[{"role": "user", "content": "Frage"}],
+            model_name="mistral-large-latest", temperature=0.1, max_tokens=100,
+        )
+
+        kwargs = mock_client.chat.completions.create.call_args.kwargs
+        sent = kwargs["messages"]
+        assert sent[0]["content"] == "Systemprompt"
+        assert sent[1]["content"] == "Frage"
+
+
+def test_openai_compat_openrouter_track_uses_cost_field_override():
+    """OpenRouter liefert den bereits fertig kalkulierten Ist-Preis (inkl.
+    Cache-Rabatt) direkt in usage.cost -- live gegen die reale API verifiziert
+    (s. docs/journal.md). Das soll statt der Anthropic-spezifischen
+    Multiplikator-Schaetzung (0,1x/1,25x, fuer Google/OpenAI-Unterbau falsch)
+    verwendet werden."""
+    from llm_core.gateways.openai_compat import OpenAICompatGateway
+
+    with patch("openai.OpenAI") as MockOpenAI, \
+         patch("llm_core.cost_tracker.record") as mock_record:
+        mock_client = MagicMock()
+        MockOpenAI.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Antwort"))]
+        mock_response.model = "anthropic/claude-haiku-4-5"
+        mock_response.usage.prompt_tokens = 1013
+        mock_response.usage.completion_tokens = 20
+        mock_response.usage.prompt_tokens_details.cached_tokens = 1008
+        mock_response.usage.prompt_tokens_details.cache_write_tokens = 0
+        mock_response.usage.cost = 0.0036
+        mock_client.chat.completions.create.return_value = mock_response
+
+        gateway = OpenAICompatGateway(provider="openrouter", api_key="dummy")
+        gateway.chat_with_history(
+            system="s", messages=[{"role": "user", "content": "Frage"}],
+            model_name="anthropic/claude-haiku-4-5", temperature=0.1, max_tokens=100,
+        )
+
+        mock_record.assert_called_once_with(
+            "openrouter", "anthropic/claude-haiku-4-5", 5, 20,
+            cache_creation_tokens=0, cache_read_tokens=1008,
+            cost_usd_override=pytest.approx(0.0036),
+        )
+
+
+def test_openai_compat_openrouter_track_falls_back_without_cost_field():
+    """Fehlt usage.cost in der Response (Format-Aenderung o.ae.), muss
+    record() ohne Override aufgerufen werden statt mit einem falschen Wert."""
+    from llm_core.gateways.openai_compat import OpenAICompatGateway
+
+    with patch("openai.OpenAI") as MockOpenAI, \
+         patch("llm_core.cost_tracker.record") as mock_record:
+        mock_client = MagicMock()
+        MockOpenAI.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Antwort"))]
+        mock_response.model = "anthropic/claude-haiku-4-5"
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 10
+        mock_response.usage.prompt_tokens_details = None
+        del mock_response.usage.cost
+        mock_client.chat.completions.create.return_value = mock_response
+
+        gateway = OpenAICompatGateway(provider="openrouter", api_key="dummy")
+        gateway.chat_with_history(
+            system="s", messages=[{"role": "user", "content": "Frage"}],
+            model_name="anthropic/claude-haiku-4-5", temperature=0.1, max_tokens=100,
+        )
+
+        mock_record.assert_called_once_with(
+            "openrouter", "anthropic/claude-haiku-4-5", 100, 10,
+            cache_creation_tokens=0, cache_read_tokens=0,
+            cost_usd_override=None,
+        )
 
 
 def test_openai_compat_subtracts_cached_tokens_before_billing():
