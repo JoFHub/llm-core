@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, TypeVar
+from typing import Any, Callable, TypeVar
 
 from pydantic import BaseModel
 
@@ -234,6 +234,7 @@ class LLMRunner:
         max_iterations: int = 10,
         system_continuation: str | None = None,
         conversation_id: str | None = None,
+        nudge_predicate: Callable[[str], bool] | None = None,
     ) -> AgentResult:
         """
         ReAct-Agent-Loop — funktioniert mit allen Backends die Tool Use unterstützen.
@@ -254,6 +255,11 @@ class LLMRunner:
             conversation_id: optionaler stabiler Schlüssel für Provider mit
                 schlüsselbasiertem Prompt-Caching (aktuell Mistral); andere
                 Gateways ignorieren ihn.
+            nudge_predicate: optional — bekommt den Antworttext einer Runde 0
+                ohne Tool-Aufruf und entscheidet, ob trotzdem per Nudge zur
+                Tool-Nutzung gedraengt wird (False = Antwort so uebernehmen,
+                z.B. bei einer Rueckfrage an den Nutzer). None = immer nudgen
+                (bisheriges Verhalten).
 
         Returns:
             AgentResult mit answer, steps (Tool-Log) und messages (History)
@@ -280,7 +286,8 @@ class LLMRunner:
                 # übersprungen und stattdessen direkt (halluziniert) geantwortet
                 # hat. Einmalig per Nudge zur Tool-Nutzung zwingen, statt die
                 # unbelegte Antwort ungeprüft durchzureichen.
-                if iteration == 0 and not nudged:
+                if iteration == 0 and not nudged and (
+                        nudge_predicate is None or nudge_predicate(text or "")):
                     logger.warning(
                         f"[{self._config.model}] Runde 0 ohne Tool-Aufruf — "
                         "erzwinge Tool-Nutzung per Nudge und wiederhole"

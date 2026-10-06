@@ -46,6 +46,33 @@ def test_agent_no_tools_called_retries_once_then_returns(search_tool):
     assert runner._gateway.chat_with_tools.call_count == 2
 
 
+def test_agent_nudge_predicate_can_skip_nudge(search_tool):
+    """nudge_predicate=False (z.B. Rueckfrage an den Nutzer) → Antwort der
+    Runde 0 wird ohne Nudge uebernommen."""
+    runner = _make_runner()
+    runner._gateway = MagicMock()
+    runner._gateway.chat_with_tools.side_effect = [
+        ("Welchen der beiden Termine meinst du?", [], [{"role": "user", "content": "Frage"}]),
+    ]
+    seen = []
+
+    def _pred(text):
+        seen.append(text)
+        return not text.rstrip().endswith("?")
+
+    result = runner.call_agent(
+        system="Du bist ein Assistent.",
+        user="Lösch den Termin",
+        tools=[search_tool],
+        tool_executor=lambda name, inp: "",
+        nudge_predicate=_pred,
+    )
+
+    assert result.answer == "Welchen der beiden Termine meinst du?"
+    assert seen == ["Welchen der beiden Termine meinst du?"]
+    assert runner._gateway.chat_with_tools.call_count == 1
+
+
 def test_agent_recovers_via_nudge_when_first_round_skips_tools(search_tool):
     """Reproduziert den Ollama-Bug: Modell antwortet in Runde 0 halluziniert
     ohne Tool-Aufruf; der Nudge bringt es dazu, in Runde 1 doch das Tool zu
