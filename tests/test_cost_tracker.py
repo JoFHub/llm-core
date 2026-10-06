@@ -128,3 +128,21 @@ def test_migration_adds_cache_columns_to_existing_db(tmp_path, monkeypatch):
     from llm_core.cost_tracker import record, total_cost
     record("anthropic", "claude-sonnet-4-6", 1000, 500)
     assert total_cost(days=1) > 0
+
+
+def test_mistral_prices_match_console_invoice_2026_10_06():
+    """Nachrechnung der Mistral-Konsole vom 2026-10-06 (Nutzung x Preiskatalog, EUR):
+    medium 731.497 in / 19.304 out / 238.208 cached = 1,08 EUR (0,93+0,12+0,03),
+    small 229.728 / 39.493 / 1,46 Mio. = 0,07 EUR, large 161.222 / 9.180 / 350.464 = 0,09 EUR.
+    Die Konsole zeigt je Zeile auf 2 Stellen gerundet, daher grosszuegige Toleranz."""
+    from llm_core.cost_tracker import _cost_usd
+
+    medium = _cost_usd("mistral-medium-latest", 731_497, 19_304, 0, 238_208)
+    small = _cost_usd("mistral-small-latest", 229_728, 39_493, 0, 1_460_000)
+    large = _cost_usd("mistral-large-latest", 161_222, 9_180, 0, 350_464)
+    assert medium == pytest.approx(1.08, abs=0.03)
+    assert small == pytest.approx(0.07, abs=0.02)
+    assert large == pytest.approx(0.09, abs=0.02)
+    # Aliase auf denselben Preis
+    assert _cost_usd("mistral-medium-3-5", 1000, 1000) == _cost_usd("mistral-medium-latest", 1000, 1000)
+    assert _cost_usd("mistral-large-2512", 1000, 1000) == _cost_usd("mistral-large-latest", 1000, 1000)

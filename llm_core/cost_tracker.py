@@ -3,7 +3,7 @@ Cost Tracking für LLM-Aufrufe — SQLite, automatisch nach jedem Call.
 
 DB: ~/.llm_core/costs.sqlite (oder LLM_CORE_DATA_DIR/costs.sqlite)
 Preise pro 1M Tokens in USD, Stand 2025 — ohne Gewähr.
-Anthropic/OpenRouter: USD. Mistral (direkt): EUR (≈ USD, <10% Abweichung).
+Anthropic/OpenRouter: USD. Mistral (direkt): EUR, Preise Stand 2026-10-06 (Konsole).
 """
 from __future__ import annotations
 
@@ -43,11 +43,20 @@ _PRICING: dict[str, tuple[float, float]] = {
     "meta-llama/llama-3.1-8b-instruct":       (0.055,  0.055),
     # OpenRouter — Mistral
     "mistralai/mistral-small":                (0.10,   0.30),
-    # Mistral direkt (EUR ≈ USD)
-    "mistral-small-latest":                   (0.10,   0.30),
-    "mistral-small-4":                        (0.10,   0.30),
-    "mistral-medium-latest":                  (0.40,   2.0),
-    "mistral-large-latest":                   (2.0,    6.0),
+    # Mistral direkt — Werte in EUR (Preiskatalog der Mistral-Konsole, 2026-10-06,
+    # aus einer echten Abrechnung nachgerechnet). Cache-Lesen kostet bei Mistral rund
+    # 0,1x des Input-Preises und passt damit zu _CACHE_READ_MULT.
+    # Aliase: small-latest = small-2603, medium-latest = medium-3-5 (2604),
+    # large-latest = large-2512. Fuer mistral-large-4 u. a. liegt kein Preis vor (-> 0).
+    "mistral-small-latest":                   (0.13,   0.51),
+    "mistral-small-2603":                     (0.13,   0.51),
+    "mistral-small-4":                        (0.13,   0.51),
+    "mistral-medium-latest":                  (1.28,   6.38),
+    "mistral-medium-3-5":                     (1.28,   6.38),
+    "mistral-medium-3.5":                     (1.28,   6.38),
+    "mistral-medium-2604":                    (1.28,   6.38),
+    "mistral-large-latest":                   (0.43,   1.28),
+    "mistral-large-2512":                     (0.43,   1.28),
     # OpenAI direkt
     "gpt-4o":                                 (2.50,   10.0),
     "gpt-4o-mini":                            (0.15,   0.60),
