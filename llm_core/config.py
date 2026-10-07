@@ -9,7 +9,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Aufrufer, die ihre eigene Env-Datei verwalten (z.B. benutzergebundene Keys in
+# Memoria), schalten das Nachladen einer gefundenen .env per Variable ab.
+if not os.environ.get("LLM_CORE_NO_DOTENV"):
+    load_dotenv()
 
 
 class LLMBackend(str, Enum):
@@ -58,6 +61,9 @@ class LLMConfig:
     ollama_host: str = "http://localhost:11434"
     openai_base_url: str | None = None
     openai_api_key_env: str = "OPENAI_API_KEY"
+    # Expliziter Key (hat Vorrang vor der Umgebungsvariable) — für Aufrufer, die Keys
+    # pro Benutzer/Sitzung verwalten und nichts in os.environ ablegen wollen.
+    api_key: str | None = None
     privacy_mode: bool = False
     cost_db_path: Path = field(default_factory=lambda: Path("~/.llm_core/costs.sqlite"))
 

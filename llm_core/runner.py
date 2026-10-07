@@ -48,7 +48,7 @@ class LLMRunner:
         elif config.backend == LLMBackend.ANTHROPIC:
             if not _ANTHROPIC_AVAILABLE:
                 raise ImportError("pip install anthropic")
-            self._gateway = AnthropicGateway()
+            self._gateway = AnthropicGateway(api_key=config.api_key or None)
 
         elif config.backend in (LLMBackend.OPENROUTER, LLMBackend.MISTRAL, LLMBackend.OPENAI):
             if not _OPENAI_AVAILABLE:
@@ -57,6 +57,7 @@ class LLMRunner:
                 provider=config.backend.value,
                 base_url=config.openai_base_url,
                 api_key_env=config.openai_api_key_env or None,
+                api_key=config.api_key or None,
             )
         else:
             raise ValueError(f"Unbekanntes Backend: {config.backend}")
