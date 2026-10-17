@@ -120,7 +120,8 @@ result = runner.call_agent(
     tool_executor=executor,
 )
 print(result.answer)    # finale Antwort
-print(result.steps)     # Tool-Aufrufe mit Ein-/Ausgaben
+print(result.steps)     # Tool-Aufrufe mit Ein-/Ausgaben und Runde (step.iteration)
+print(result.iterations, result.nudged, result.hit_max_iterations)  # Runden, Nudge, Grenze erreicht
 # result.messages → als prior_messages für den nächsten Turn übergeben
 ```
 

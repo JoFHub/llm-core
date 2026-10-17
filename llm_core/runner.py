@@ -304,7 +304,8 @@ class LLMRunner:
                         ),
                     })
                     continue
-                return AgentResult(answer=text or "", steps=steps, messages=messages)
+                return AgentResult(answer=text or "", steps=steps, messages=messages,
+                                   iterations=iteration + 1, nudged=nudged)
 
             # Tools ausführen und Ergebnisse in History eintragen
             for tc in tool_calls:
@@ -313,6 +314,7 @@ class LLMRunner:
                     tool_name=tc.name,
                     tool_input=tc.input,
                     tool_result=result,
+                    iteration=iteration,
                 ))
                 messages.append({
                     "role": "tool",
@@ -328,4 +330,5 @@ class LLMRunner:
             messages=messages,
             conversation_id=conversation_id,
         )
-        return AgentResult(answer=final_text or "", steps=steps, messages=messages)
+        return AgentResult(answer=final_text or "", steps=steps, messages=messages,
+                           iterations=max_iterations, nudged=nudged, hit_max_iterations=True)

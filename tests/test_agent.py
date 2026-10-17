@@ -44,6 +44,9 @@ def test_agent_no_tools_called_retries_once_then_returns(search_tool):
     assert result.answer == "Die Antwort ist immer noch 42."
     assert result.steps == []
     assert runner._gateway.chat_with_tools.call_count == 2
+    assert result.nudged is True
+    assert result.iterations == 2
+    assert result.hit_max_iterations is False
 
 
 def test_agent_nudge_predicate_can_skip_nudge(search_tool):
@@ -71,6 +74,8 @@ def test_agent_nudge_predicate_can_skip_nudge(search_tool):
     assert result.answer == "Welchen der beiden Termine meinst du?"
     assert seen == ["Welchen der beiden Termine meinst du?"]
     assert runner._gateway.chat_with_tools.call_count == 1
+    assert result.nudged is False
+    assert result.iterations == 1
 
 
 def test_agent_recovers_via_nudge_when_first_round_skips_tools(search_tool):
@@ -126,6 +131,9 @@ def test_agent_one_tool_call(search_tool):
     assert len(result.steps) == 1
     assert result.steps[0].tool_name == "search"
     assert result.steps[0].tool_result == "Python: eine Programmiersprache."
+    assert result.steps[0].iteration == 0
+    assert result.iterations == 2
+    assert result.nudged is False and result.hit_max_iterations is False
     tool_executor.assert_called_once_with("search", {"query": "Python"})
 
 
@@ -151,6 +159,31 @@ def test_agent_max_iterations(search_tool):
     assert runner._gateway.chat_with_tools.call_count == 3
     assert result.answer == "Abbruch-Antwort."
     assert len(result.steps) == 3
+    assert [s.iteration for s in result.steps] == [0, 1, 2]
+    assert result.iterations == 3
+    assert result.hit_max_iterations is True
+
+
+def test_agent_steps_carry_iteration_with_parallel_calls(search_tool):
+    """Zwei Tool-Aufrufe in Runde 0, einer in Runde 1 — jeder Schritt traegt
+    seine Runde (Zuordnung im Werkzeug-Protokoll von Memoria)."""
+    runner = _make_runner()
+    runner._gateway = MagicMock()
+    a = ToolCall(id="a", name="search", input={"query": "a"})
+    b = ToolCall(id="b", name="search", input={"query": "b"})
+    c = ToolCall(id="c", name="search", input={"query": "c"})
+    runner._gateway.chat_with_tools.side_effect = [
+        (None, [a, b], []),
+        (None, [c], []),
+        ("fertig", [], []),
+    ]
+
+    result = runner.call_agent(
+        system="S", user="F", tools=[search_tool], tool_executor=lambda n, i: i["query"],
+    )
+
+    assert [(s.tool_input["query"], s.iteration) for s in result.steps] == [("a", 0), ("b", 0), ("c", 1)]
+    assert result.iterations == 3
 
 
 def test_agent_system_continuation_used_after_first_round(search_tool):
