@@ -43,7 +43,7 @@ class LLMRunner:
         self._config = config
 
         if config.backend == LLMBackend.OLLAMA:
-            self._gateway = OllamaGateway(host=config.ollama_host)
+            self._gateway = OllamaGateway(host=config.ollama_host, think=config.think)
 
         elif config.backend == LLMBackend.ANTHROPIC:
             if not _ANTHROPIC_AVAILABLE:

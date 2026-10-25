@@ -39,12 +39,18 @@ _NUM_CTX = int(os.environ.get("OLLAMA_NUM_CTX", "16384"))
 
 
 class OllamaGateway(LLMGateway):
-    def __init__(self, host: str = "http://localhost:11434") -> None:
+    def __init__(self, host: str = "http://localhost:11434", think: bool | None = None) -> None:
         self._host = host.rstrip("/")
+        # None = Feld weglassen (Modell-Standard). Neuere Ollama-Versionen liefern
+        # die Denkspur im Feld message.thinking statt als <think> im content —
+        # _strip_thinking sieht sie dann nicht, die Rechenzeit fällt trotzdem an.
+        self._think = think
 
     def _post_chat(self, payload: dict) -> dict:
         """POST an /api/chat mit aussagekräftigen Fehlermeldungen."""
         payload.setdefault("keep_alive", _KEEP_ALIVE)
+        if self._think is not None:
+            payload.setdefault("think", self._think)
         req = urllib.request.Request(
             f"{self._host}/api/chat",
             data=json.dumps(payload).encode(),

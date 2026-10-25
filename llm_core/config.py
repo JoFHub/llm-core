@@ -64,6 +64,10 @@ class LLMConfig:
     # Expliziter Key (hat Vorrang vor der Umgebungsvariable) — für Aufrufer, die Keys
     # pro Benutzer/Sitzung verwalten und nichts in os.environ ablegen wollen.
     api_key: str | None = None
+    # Denkspur von Reasoning-Modellen (z.B. qwen3) in Ollama: None = Modell-Standard
+    # (qwen3 denkt), False = aus. Für JSON-Extraktion spart False ein Vielfaches an
+    # Rechenzeit. Andere Backends ignorieren den Wert.
+    think: bool | None = None
     privacy_mode: bool = False
     cost_db_path: Path = field(default_factory=lambda: Path("~/.llm_core/costs.sqlite"))
 
@@ -115,5 +119,6 @@ class LLMConfig:
             ollama_host=d.get("ollama_host", "http://localhost:11434"),
             openai_base_url=d.get("openai_base_url") or None,
             openai_api_key_env=d.get("openai_api_key_env", "OPENAI_API_KEY"),
+            think=d.get("think"),
             privacy_mode=d.get("privacy_mode", False),
         )

@@ -86,6 +86,51 @@ def test_ollama_gateway_strips_unclosed_think_block():
     assert content == ""
 
 
+def _capture_ollama_payloads(gateway):
+    """Ruft chat, chat_with_history und chat_with_tools auf, gibt die Payloads zurück."""
+    payloads = []
+
+    def mock_urlopen(req, timeout=None):
+        payloads.append(json.loads(req.data.decode()))
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({"message": {"content": "ok"}}).encode()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        return mock_resp
+
+    with patch("urllib.request.urlopen", mock_urlopen):
+        kw = dict(model_name="qwen3:14b", temperature=0.1, max_tokens=100)
+        gateway.chat(system="s", user="u", json_mode=True, **kw)
+        gateway.chat_with_history(system="s", messages=[{"role": "user", "content": "u"}], **kw)
+        gateway.chat_with_tools(system="s", messages=[{"role": "user", "content": "u"}], tools=[], **kw)
+    return payloads
+
+
+def test_ollama_gateway_sends_think_false_when_set():
+    """think=False schaltet die Denkspur von qwen3 ab — in allen drei Aufrufarten."""
+    from llm_core.gateways.ollama import OllamaGateway
+
+    payloads = _capture_ollama_payloads(OllamaGateway(think=False))
+    assert [p.get("think") for p in payloads] == [False, False, False]
+
+
+def test_ollama_gateway_omits_think_by_default():
+    """Ohne Angabe bleibt das Feld weg — Modell-Standard wie bisher."""
+    from llm_core.gateways.ollama import OllamaGateway
+
+    payloads = _capture_ollama_payloads(OllamaGateway())
+    assert all("think" not in p for p in payloads)
+
+
+def test_runner_passes_think_to_ollama_gateway():
+    from llm_core import LLMBackend, LLMConfig, LLMRunner
+
+    runner = LLMRunner(LLMConfig(backend=LLMBackend.OLLAMA, model="qwen3:14b", think=False))
+    assert runner._gateway._think is False
+    assert LLMConfig.from_dict({"backend": "ollama", "model": "m", "think": False}).think is False
+    assert LLMConfig.from_dict({"backend": "ollama", "model": "m"}).think is None
+
+
 def test_ollama_gateway_raises_on_connection_error():
     from llm_core.gateways.ollama import OllamaGateway
     import urllib.error
