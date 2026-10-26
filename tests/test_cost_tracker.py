@@ -146,3 +146,60 @@ def test_mistral_prices_match_console_invoice_2026_10_06():
     # Aliase auf denselben Preis
     assert _cost_usd("mistral-medium-3-5", 1000, 1000) == _cost_usd("mistral-medium-latest", 1000, 1000)
     assert _cost_usd("mistral-large-2512", 1000, 1000) == _cost_usd("mistral-large-latest", 1000, 1000)
+
+
+def test_tag_explizit_und_filter():
+    """Zuordnung je Aufruf (z. B. Kundenprofil in Probatio): Summen lassen sich je tag filtern."""
+    from llm_core.cost_tracker import record, model_summary, total_cost, tag_summary
+    record("openrouter", "google/gemini-2.5-flash", 1000, 100, cost_usd_override=0.01, tag="ta")
+    record("openrouter", "google/gemini-2.5-flash", 1000, 100, cost_usd_override=0.02, tag="visibilia")
+    record("openrouter", "google/gemini-2.5-flash", 1000, 100, cost_usd_override=0.04)
+
+    assert total_cost(days=1) == pytest.approx(0.07)
+    assert total_cost(days=1, tag="ta") == pytest.approx(0.01)
+    assert total_cost(days=1, tag="") == pytest.approx(0.04)  # ohne Zuordnung
+    assert [r["calls"] for r in model_summary(days=1, tag="visibilia")] == [1]
+    rows = {r["tag"]: r for r in tag_summary(days=1)}
+    assert set(rows) == {"", "ta", "visibilia"}
+    assert rows["visibilia"]["cost_usd"] == pytest.approx(0.02)
+    assert rows["ta"]["last"]
+
+
+def test_tag_source_liefert_standard():
+    """set_tag_source(): ohne tag-Argument gilt die Funktion; ein Fehler darin bricht record() nicht ab."""
+    from llm_core import cost_tracker
+    try:
+        cost_tracker.set_tag_source(lambda: "goa")
+        cost_tracker.record("openrouter", "google/gemini-2.5-flash", 10, 1, cost_usd_override=0.5)
+        cost_tracker.record("openrouter", "google/gemini-2.5-flash", 10, 1, cost_usd_override=0.25, tag="anders")
+        cost_tracker.set_tag_source(lambda: 1 / 0)
+        cost_tracker.record("openrouter", "google/gemini-2.5-flash", 10, 1, cost_usd_override=0.125)
+    finally:
+        cost_tracker.set_tag_source(None)
+    assert cost_tracker.total_cost(days=1, tag="goa") == pytest.approx(0.5)
+    assert cost_tracker.total_cost(days=1, tag="anders") == pytest.approx(0.25)
+    assert cost_tracker.total_cost(days=1, tag="") == pytest.approx(0.125)
+
+
+def test_migration_ergaenzt_tag_spalte(tmp_path, monkeypatch):
+    """Alt-DB ohne Spalte tag (vor 2026-10-26): _connect() rüstet sie nach, alte Zeilen haben tag ''."""
+    import sqlite3
+    monkeypatch.setenv("LLM_CORE_DATA_DIR", str(tmp_path))
+    conn = sqlite3.connect(str(tmp_path / "costs.sqlite"))
+    conn.execute("""
+        CREATE TABLE llm_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, provider TEXT NOT NULL,
+            model TEXT NOT NULL, prompt_tokens INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0, cost_usd REAL NOT NULL DEFAULT 0.0,
+            cache_creation_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("INSERT INTO llm_usage (timestamp, provider, model, cost_usd) "
+                 "VALUES (datetime('now'), 'openrouter', 'alt', 0.3)")
+    conn.commit()
+    conn.close()
+
+    from llm_core.cost_tracker import record, total_cost
+    record("openrouter", "neu", 10, 1, cost_usd_override=0.1, tag="ta")
+    assert total_cost(days=1, tag="ta") == pytest.approx(0.1)
+    assert total_cost(days=1, tag="") == pytest.approx(0.3)

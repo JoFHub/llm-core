@@ -2,6 +2,7 @@
 Cost Tracking für LLM-Aufrufe — SQLite, automatisch nach jedem Call.
 
 DB: ~/.llm_core/costs.sqlite (oder LLM_CORE_DATA_DIR/costs.sqlite)
+Spalte `tag`: frei wählbare Zuordnung je Aufruf (z. B. Kundenprofil), gesetzt über set_tag_source().
 Preise pro 1M Tokens in USD, Stand 2025 — ohne Gewähr.
 Anthropic/OpenRouter: USD. Mistral (direkt): EUR, Preise Stand 2026-10-06 (Konsole).
 """
@@ -11,6 +12,7 @@ import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 
 # ---------------------------------------------------------------------------
 # Preistabelle: (input_per_1M_usd, output_per_1M_usd)
@@ -95,6 +97,22 @@ def _cost_usd(
     ) / 1_000_000
 
 
+_tag_source: Callable[[], str] | None = None
+
+
+def set_tag_source(fn: Callable[[], str] | None) -> None:
+    """Funktion, die beim Speichern die Zuordnung liefert (z. B. den Namen des aktiven Profils)."""
+    global _tag_source
+    _tag_source = fn
+
+
+def _current_tag() -> str:
+    try:
+        return (_tag_source() or "") if _tag_source else ""
+    except Exception:
+        return ""
+
+
 def _db_path() -> Path:
     data_dir = os.environ.get("LLM_CORE_DATA_DIR", "~/.llm_core")
     return Path(data_dir).expanduser() / "costs.sqlite"
@@ -114,12 +132,15 @@ def _connect() -> sqlite3.Connection:
             completion_tokens      INTEGER NOT NULL DEFAULT 0,
             cost_usd               REAL NOT NULL DEFAULT 0.0,
             cache_creation_tokens  INTEGER NOT NULL DEFAULT 0,
-            cache_read_tokens      INTEGER NOT NULL DEFAULT 0
+            cache_read_tokens      INTEGER NOT NULL DEFAULT 0,
+            tag                    TEXT NOT NULL DEFAULT ''
         )
     """)
-    for col in ("cache_creation_tokens", "cache_read_tokens"):
+    for col, decl in (("cache_creation_tokens", "INTEGER NOT NULL DEFAULT 0"),
+                      ("cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"),
+                      ("tag", "TEXT NOT NULL DEFAULT ''")):
         try:
-            conn.execute(f"ALTER TABLE llm_usage ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
+            conn.execute(f"ALTER TABLE llm_usage ADD COLUMN {col} {decl}")
         except sqlite3.OperationalError:
             pass  # Spalte existiert bereits (Alt-DB oder frisch per CREATE TABLE angelegt)
     conn.commit()
@@ -138,6 +159,7 @@ def record(
     cache_creation_tokens: int = 0,
     cache_read_tokens: int = 0,
     cost_usd_override: float | None = None,
+    tag: str | None = None,
 ) -> None:
     """Speichert einen LLM-Aufruf mit berechneten Kosten. Niemals blockierend.
 
@@ -147,7 +169,9 @@ def record(
     eigentlich Anthropic-Konditionen) waere fuer andere Unterbau-Provider
     falsch. Wenn gesetzt, ersetzt dieser Wert die Schaetzung; die
     Token-Spalten werden trotzdem unveraendert gespeichert (Auswertung/
-    Transparenz)."""
+    Transparenz).
+
+    tag: Zuordnung des Aufrufs; ohne Angabe die von set_tag_source()."""
     cost = (
         cost_usd_override if cost_usd_override is not None
         else _cost_usd(model, prompt_tokens, completion_tokens, cache_creation_tokens, cache_read_tokens)
@@ -158,10 +182,10 @@ def record(
         conn.execute(
             "INSERT INTO llm_usage "
             "(timestamp, provider, model, prompt_tokens, completion_tokens, cost_usd, "
-            "cache_creation_tokens, cache_read_tokens) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "cache_creation_tokens, cache_read_tokens, tag) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (ts, provider, model, prompt_tokens, completion_tokens, cost,
-             cache_creation_tokens, cache_read_tokens),
+             cache_creation_tokens, cache_read_tokens, _current_tag() if tag is None else tag),
         )
         conn.commit()
         conn.close()
@@ -192,18 +216,26 @@ def daily_summary(days: int = 30) -> list[dict]:
         return []
 
 
-def model_summary(days: int = 30) -> list[dict]:
-    """Kosten pro Modell: [{model, provider, cost_usd, calls, prompt_tokens, completion_tokens}]"""
+def _since_and_tag(days: int, tag: str | None) -> tuple[str, tuple]:
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    if tag is None:
+        return "timestamp >= ?", (since,)
+    return "timestamp >= ? AND tag = ?", (since, tag)
+
+
+def model_summary(days: int = 30, tag: str | None = None) -> list[dict]:
+    """Kosten pro Modell: [{model, provider, cost_usd, calls, prompt_tokens, completion_tokens}].
+    tag: nur Aufrufe mit dieser Zuordnung (None = alle)."""
+    where, args = _since_and_tag(days, tag)
     try:
         conn = _connect()
         rows = conn.execute(
             "SELECT model, provider, SUM(cost_usd), COUNT(*), "
             "SUM(prompt_tokens), SUM(completion_tokens), "
             "SUM(cache_creation_tokens), SUM(cache_read_tokens) "
-            "FROM llm_usage WHERE timestamp >= ? "
+            f"FROM llm_usage WHERE {where} "
             "GROUP BY model, provider ORDER BY SUM(cost_usd) DESC",
-            (since,),
+            args,
         ).fetchall()
         conn.close()
         return [
@@ -216,13 +248,29 @@ def model_summary(days: int = 30) -> list[dict]:
         return []
 
 
-def total_cost(days: int = 30) -> float:
-    """Gesamtkosten der letzten N Tage in USD."""
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+def tag_summary(days: int = 30) -> list[dict]:
+    """Kosten je Zuordnung und Provider: [{tag, provider, cost_usd, calls, last}] (last = letzter Aufruf, ISO)."""
+    where, args = _since_and_tag(days, None)
+    try:
+        conn = _connect()
+        rows = conn.execute(
+            "SELECT tag, provider, SUM(cost_usd), COUNT(*), MAX(timestamp) "
+            f"FROM llm_usage WHERE {where} GROUP BY tag, provider ORDER BY tag, provider",
+            args,
+        ).fetchall()
+        conn.close()
+        return [{"tag": r[0], "provider": r[1], "cost_usd": r[2], "calls": r[3], "last": r[4]} for r in rows]
+    except Exception:
+        return []
+
+
+def total_cost(days: int = 30, tag: str | None = None) -> float:
+    """Gesamtkosten der letzten N Tage in USD (tag: nur diese Zuordnung)."""
+    where, args = _since_and_tag(days, tag)
     try:
         conn = _connect()
         row = conn.execute(
-            "SELECT COALESCE(SUM(cost_usd), 0) FROM llm_usage WHERE timestamp >= ?", (since,)
+            f"SELECT COALESCE(SUM(cost_usd), 0) FROM llm_usage WHERE {where}", args
         ).fetchone()
         conn.close()
         return float(row[0]) if row else 0.0

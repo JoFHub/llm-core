@@ -152,6 +152,20 @@ daily_summary(days=30)   # Kosten pro Tag
 model_summary(days=30)   # Kosten pro Modell
 ```
 
+**Zuordnung je Aufruf (`tag`):** Jeder Eintrag kann einer frei wählbaren Zuordnung gehören, z. B. dem Kundenprofil
+(Probatio) oder dem Aufrufer (Agent, RAG, Hintergrund). Die App setzt einmal eine Funktion, die beim Speichern die
+aktuelle Zuordnung liefert; Summen lassen sich danach filtern. Ältere Datenbanken bekommen die Spalte beim ersten
+Zugriff (alte Zeilen: `""`).
+
+```python
+from llm_core import cost_tracker
+
+cost_tracker.set_tag_source(lambda: aktives_profil())   # ohne Angabe: ""
+cost_tracker.total_cost(days=30, tag="visibilia")
+cost_tracker.model_summary(days=30, tag="visibilia")
+cost_tracker.tag_summary(days=30)    # [{tag, provider, cost_usd, calls, last}]
+```
+
 Die Preistabelle liegt in `llm_core/cost_tracker.py` (`pricing_table()`); unbekannte Modelle werden mit Kosten 0 erfasst.
 
 ## Tests
