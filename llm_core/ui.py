@@ -1,8 +1,8 @@
 """
-Seitenleisten-Baustein für Streamlit-Apps (Probatio, Memoria, Fabula): Kosten in ein bis drei Zeilen.
+Seitenleisten-Baustein für Streamlit-Apps (Probatio, Memoria, Fabula): Kosten in ein bis zwei Zeilen.
 
     from llm_core.ui import kosten_seitenleiste
-    kosten_seitenleiste(key_env="OPENROUTER_API_KEY_VISIBILIA", tag="visibilia", titel="Kosten")
+    kosten_seitenleiste(key_env="OPENROUTER_API_KEY_VISIBILIA", titel="Kosten Visibilia")
 
 Streamlit ist optional (`pip install "llm-core[ui]"`) und wird erst im Aufruf importiert. Die Zeilen
 entstehen im Server-Prozess; im HTML steht nur der Text, nie ein Key (auch nicht gekürzt).
@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 
 from llm_core import anbieter as _anbieter
-from llm_core import cost_tracker
 
 # Material-Symbole in Streamlit-Markdown statt farbiger Emojis (GUI-Standard wie Memoria)
 AMPEL_ZEICHEN = {
@@ -33,15 +32,13 @@ def betrag(usd: float | None) -> str:
 
 def kosten_zeilen(
     key_env: str = "OPENROUTER_API_KEY",
-    tag: str | None = None,
-    tage: int = 30,
     adapter: "_anbieter.OpenRouter | None" = None,
     schwellen: "_anbieter.Schwellen | None" = None,
 ) -> list[str]:
     """Die Zeilen des Bausteins (ohne Streamlit, testbar).
 
-    Mit Key: Verbrauch von Limit mit Ampel, dann heute/Monat. Ohne Key oder bei Fehler: lokale Schätzung
-    der letzten `tage` Tage aus der Kosten-DB (nur `tag`, falls gesetzt)."""
+    Kosten je Key, wie der Anbieter sie abrechnet (über alle Rechner): Verbrauch von Limit mit Ampel; heute/Monat
+    und Einzelheiten aus der Kosten-DB nur in der Konsole. Ohne Key oder bei Fehler eine graue Zeile, keine Schätzung."""
     key = os.environ.get(key_env, "").strip()
     zeilen: list[str] = []
     if key:
@@ -58,13 +55,10 @@ def kosten_zeilen(
                     status.limit_reset or "", "")
                 zeilen.append(f"{zeichen} {betrag(verbraucht)} von {betrag(status.limit)}{zeitraum} "
                               f"({round(anteil * 100)} %)")
-            zeilen.append(f"heute {betrag(status.heute)} · Monat {betrag(status.monat)}")
             return zeilen
         zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} Anbieter: {status.fehler}")
     else:
         zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} kein Key ({key_env})")
-    lokal = cost_tracker.total_cost(days=tage, tag=tag)
-    zeilen.append(f"lokal {tage} Tage: {betrag(lokal)} (Schätzung)")
     return zeilen
 
 
@@ -102,16 +96,14 @@ def kurzstatus_zeilen(
 
 def kosten_seitenleiste(
     key_env: str = "OPENROUTER_API_KEY",
-    tag: str | None = None,
     titel: str | None = "Kosten",
-    tage: int = 30,
     adapter: "_anbieter.OpenRouter | None" = None,
     schwellen: "_anbieter.Schwellen | None" = None,
 ) -> list[str]:
     """Schreibt die Kostenzeilen klein in die Streamlit-Seitenleiste und gibt sie zurück."""
     import streamlit as st  # optionale Abhängigkeit, nur hier
 
-    zeilen = kosten_zeilen(key_env, tag=tag, tage=tage, adapter=adapter, schwellen=schwellen)
+    zeilen = kosten_zeilen(key_env, adapter=adapter, schwellen=schwellen)
     with st.sidebar:
         # "$" würde Streamlit als Formel lesen
         text = "  \n".join(zeilen).replace("$", "\\$")

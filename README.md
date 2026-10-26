@@ -206,13 +206,30 @@ Schwellen: `anbieter.Schwellen(gelb=0.8, rot=1.0)` oder `LLM_CORE_AMPEL_GELB` / 
 ```python
 from llm_core.ui import kosten_seitenleiste
 
-kosten_seitenleiste(key_env="OPENROUTER_API_KEY_VISIBILIA", tag="visibilia", titel="Kosten")
+kosten_seitenleiste(key_env="OPENROUTER_API_KEY_VISIBILIA", titel="Kosten Visibilia")
 ```
 
-Zwei bis drei kleine Zeilen: `:green[:material/check_circle:] 4,12 $ von 10,00 $ (41 %)`
-(Ampel als farbiges Material-Symbol), `heute 0,35 $ · Monat 3,10 $`. Ohne Key oder bei
-Fehler stattdessen die lokale Schätzung der letzten 30 Tage aus der Kosten-DB (nur `tag`). Der Key bleibt im
+Ein bis zwei kleine Zeilen: `:green[:material/check_circle:] 4,12 $ von 10,00 $ (41 %)`
+(Ampel als farbiges Material-Symbol); heute/Monat stehen nur in der Konsole. Gezeigt werden
+die Kosten je Key, wie der Anbieter sie abrechnet (über alle Rechner); ohne Key oder bei Fehler eine graue Zeile
+(`kein Key (…)` bzw. die Fehlermeldung), keine Schätzung aus der Kosten-DB. Der Key bleibt im
 Server-Prozess; ins HTML kommt nur der Text. `kosten_zeilen(...)` liefert dieselben Zeilen ohne Streamlit.
+
+#### Regel für alle Apps (Probatio, Memoria, Fabula)
+
+Kosten zeigt jede App gleich, und nur so — maßgeblich sind die **Kosten je Key** beim Anbieter, keine Schätzung:
+
+1. **Ein OpenRouter-Key je App bzw. Kundenprofil, immer mit Limit** (`OPENROUTER_API_KEY_<APP|PROFIL>`, angelegt
+   und begrenzt in der Konsole). Ohne eigenen Key gilt der allgemeine Key der App.
+2. **In der App nur der Baustein**: einmal unten in der Seitenleiste
+   `kosten_seitenleiste(key_env=<Key der App bzw. des Profils>, titel="Kosten <Name>")`.
+   Keine eigene Kostenseite, keine eigene Abfrage beim Anbieter, keine eigenen Betragsformate. Der Baustein zeigt
+   nur den eigenen Key — ein Kunde sieht in einer Vorführung keine anderen Kunden.
+3. **Kosten-DB nur für Einzelheiten**: jeder Aufruf mit `tag` (App bzw. Kundenprofil, `cost_tracker.set_tag_source`)
+   in eine eigene Kosten-DB je App (`LLM_CORE_DATA_DIR`; auf dem Server im Datenordner). Sie zeigt in der Konsole,
+   welches Modell und welcher Teil der App die Kosten verursacht — in der App erscheint sie nicht.
+4. **Einzelheiten und Verwaltung nur in der Konsole** (`python -m llm_core.konsole`, auf dem Omen über Porta):
+   Verbrauch aller Keys, Kosten je Tag, Modell und `tag`, Limits ändern, Keys anlegen oder sperren.
 
 ### Konsole
 
