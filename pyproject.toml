@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-core"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.11"
 description = "Zentralisierter LLM-Zugriff: Ollama, Claude, OpenRouter, Mistral"
 readme = "README.md"
@@ -17,6 +17,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ui = ["streamlit>=1.37"]
+keyring = ["keyring>=24"]
 dev = ["pytest>=8.0", "pytest-mock>=3.0"]
 
 [tool.setuptools.packages.find]

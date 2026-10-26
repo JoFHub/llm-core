@@ -168,6 +168,82 @@ cost_tracker.tag_summary(days=30)    # [{tag, provider, cost_usd, calls, last}]
 
 Die Preistabelle liegt in `llm_core/cost_tracker.py` (`pricing_table()`); unbekannte Modelle werden mit Kosten 0 erfasst.
 
+## Kosten und Keys: Konsole und Seitenleiste
+
+Der **echte Verbrauch** steht beim Anbieter, je Key; die lokale Kosten-DB ist eine Schätzung je Rechner.
+`llm_core.anbieter` fragt den Anbieter ab, `llm_core.ui` zeigt das Ergebnis in einer App-Seitenleiste,
+`llm_core.konsole` ist die Verwaltungsoberfläche. Mistral ist bewusst nicht dabei.
+
+```bash
+pip install "llm-core[ui] @ git+https://github.com/JoFHub/llm-core.git"   # Streamlit nur mit Extra ui
+```
+
+### Anbieter-Status (ohne Oberfläche)
+
+```python
+import os
+from llm_core import anbieter
+
+o = anbieter.OpenRouter()                         # Keys aus Umgebung/.env, Provisioning-Key falls vorhanden
+s = o.key_status(os.environ["OPENROUTER_API_KEY_VISIBILIA"], "visibilia")
+s.monat, s.heute, s.limit, s.rest, s.fehler       # Fehler (401, 402, Timeout) stehen im Feld, nichts wird geworfen
+anbieter.ampel(s)                                 # "gruen" | "gelb" | "rot" | "grau"
+o.keys()                                          # mit Provisioning-Key alle Keys des Kontos, sonst OPENROUTER_API_KEY*
+o.konto()                                         # Guthaben (nur mit Provisioning-Key)
+anbieter.Anthropic().keys()                       # Kosten der Organisation über die Admin-API
+```
+
+Abfragen werden 60 s zwischengespeichert (`anbieter.cache_leeren()`), Timeout 10 s. Keys erscheinen nur gekürzt
+(`sk-or-v1-…a1b2`), auch in Fehlermeldungen.
+
+**Ampel:** grün unter 80 % des Limits, gelb ab 80 %, rot ab 100 % **oder ohne Limit** (ein Key ohne Limit ist das
+Risiko, das zum Budget-Vorfall geführt hat). Bei Limits mit Zurücksetzen (täglich/wöchentlich/monatlich) zählt der
+Verbrauch der laufenden Periode (`limit - rest`). Grau: Fehler, oder der Anbieter liefert kein Limit (Anthropic).
+Schwellen: `anbieter.Schwellen(gelb=0.8, rot=1.0)` oder `LLM_CORE_AMPEL_GELB` / `LLM_CORE_AMPEL_ROT`.
+
+### Seitenleisten-Baustein
+
+```python
+from llm_core.ui import kosten_seitenleiste
+
+kosten_seitenleiste(key_env="OPENROUTER_API_KEY_VISIBILIA", tag="visibilia", titel="Kosten")
+```
+
+Zwei bis drei kleine Zeilen: `🟢 4,12 $ von 10,00 $ (41 %)`, `heute 0,35 $ · Monat 3,10 $`. Ohne Key oder bei
+Fehler stattdessen die lokale Schätzung der letzten 30 Tage aus der Kosten-DB (nur `tag`). Der Key bleibt im
+Server-Prozess; ins HTML kommt nur der Text. `kosten_zeilen(...)` liefert dieselben Zeilen ohne Streamlit.
+
+### Konsole
+
+```bash
+python -m llm_core.konsole            # http://localhost:8510 (--port, LLM_CORE_KONSOLE_PORT)
+```
+
+- **Übersicht:** alle Keys mit Verbrauch heute/Monat/gesamt, Limit, Ampel; Guthaben; Warnung bei Keys ohne Limit.
+- **Verwaltung** (nur mit Provisioning-Key): Limit ändern, Key deaktivieren/aktivieren, neuen Key anlegen. Jede
+  Änderung zeigt vorher/nachher und braucht eine Bestätigung. Der Klartext eines neuen Keys wird genau einmal
+  angezeigt (sofort in die `.env` der App bzw. den Passwortmanager übernehmen) und nie gespeichert oder geloggt.
+- **Details lokal:** Kosten je Tag, Modell und `tag` aus einer wählbaren Kosten-DB (`~/.llm_core`, `~/.memoria`,
+  `LLM_CORE_DATA_DIR`, weitere über `LLM_CORE_KONSOLE_DBS`, getrennt mit `;` unter Windows bzw. `:` sonst).
+  Die DB wird nur lesend geöffnet.
+
+Die Konsole hört nur auf `localhost` und hat keine eigene Anmeldung. Für einen Server-Betrieb (`--adresse`) gehört
+sie hinter eine vorhandene Anmeldung.
+
+### Einrichtung
+
+| Variable | Zweck |
+|---|---|
+| `OPENROUTER_API_KEY*` | Keys der Apps (ein Key je App bzw. Kundenprofil, jeder mit Limit) |
+| `OPENROUTER_PROVISIONING_KEY` | Provisioning-/Management-Key: alle Keys, Guthaben, Verwaltung (Alias `OPENROUTER_MANAGEMENT_KEY`) |
+| `ANTHROPIC_ADMIN_KEY` | Admin-Key (`sk-ant-admin…`) für die Kosten der Organisation; ohne: „nicht eingerichtet“ |
+
+1. Bei OpenRouter unter *Settings → Management Keys* (früher *Provisioning Keys*) einen Key anlegen.
+2. In die `.env` des Rechners eintragen (`OPENROUTER_PROVISIONING_KEY=…`), nie in Git. Die `.env` im
+   Startordner wird über `llm_core.config` geladen.
+3. Alternativ im Anmeldeinformationsspeicher: `pip install "llm-core[keyring]"`, dann
+   `keyring set llm-core OPENROUTER_PROVISIONING_KEY` (gilt ebenso für `ANTHROPIC_ADMIN_KEY`).
+
 ## Tests
 
 ```bash
