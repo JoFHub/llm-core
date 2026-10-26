@@ -7,6 +7,7 @@ Keys erscheinen nur gekürzt; einzige Ausnahme ist der Klartext eines neu angele
 """
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
@@ -14,10 +15,10 @@ import streamlit as st
 from llm_core import anbieter as an  # lädt über llm_core.config auch die .env
 from llm_core.konsole import daten
 from llm_core.konsole._widgets import CSS, button_bar, help_popover, options_popover, panel_header
-from llm_core.ui import betrag
+from llm_core.ui import betrag, kurzstatus_zeilen
 
 st.set_page_config(page_title="LLM-Kosten", page_icon=":material/payments:", layout="wide",
-                   initial_sidebar_state="collapsed")
+                   initial_sidebar_state="expanded")
 st.markdown(CSS, unsafe_allow_html=True)
 
 RESETS = {"nie (Limit gilt insgesamt)": None, "täglich": "daily", "wöchentlich": "weekly", "monatlich": "monthly"}
@@ -47,6 +48,7 @@ Verbrauch, Limits und Keys direkt beim Anbieter, in USD, zwischengespeichert bis
 
 - **Ampel:** grün im Limit, orange ab der Schwelle unter „Optionen“, rot bei erreichtem Limit oder
   Key ohne Limit, grau bei Fehler oder nicht abfragbarem Limit.
+- **Guthaben:** nur OpenRouter (eingezahlt, verbraucht, Rest); das Anthropic-Guthaben steht im Dashboard.
 - **OpenRouter:** alle Keys und das Guthaben mit Provisioning-Key (`OPENROUTER_PROVISIONING_KEY`), sonst
   nur die Keys aus der Umgebung (`OPENROUTER_API_KEY*`).
 - **Anthropic:** nur die API-Keys (`ANTHROPIC_API_KEY*`, gekürzt) — Anthropic liefert je Key weder
@@ -167,6 +169,15 @@ schwellen = an.Schwellen(gelb=st.session_state.opt_gelb, rot=max(STANDARD.rot, s
 openrouter = an.OpenRouter()
 anthropic = an.Anthropic()
 
+konto = openrouter.konto()
+keys = openrouter.keys() + anthropic.keys()
+
+# -- Seitenleiste: Kurzstatus, in allen Reitern sichtbar -----------------------
+
+with st.sidebar:
+    st.markdown(_md("**Kurzstatus**  \n" + "  \n".join(kurzstatus_zeilen(konto, keys, schwellen))))
+    st.caption(f"Stand {datetime.now():%H:%M} · zwischengespeichert bis 60 s")
+
 uebersicht, verwaltung, lokal = st.tabs(REITER, key="reiter", on_change="rerun")
 
 # -- Übersicht ------------------------------------------------------------------
@@ -175,17 +186,18 @@ with uebersicht:
     if not openrouter.hat_provisioning:
         st.info("Kein Provisioning-Key (`OPENROUTER_PROVISIONING_KEY`): angezeigt werden nur die Keys aus der "
                 "Umgebung (`OPENROUTER_API_KEY*`). „OpenRouter verwalten“ ist ausgeschaltet.", icon=":material/info:")
-    konto = openrouter.konto()
     if konto is not None:
         if konto.fehler:
             st.warning(_md(f"OpenRouter-Guthaben: {konto.fehler}"), icon=":material/warning:")
         else:
+            # Nur OpenRouter liefert ein Guthaben; Anthropic: nur im Dashboard der Console
             a, b, c = st.columns(3)
-            a.metric("Guthaben eingezahlt", betrag(konto.guthaben))
-            b.metric("verbraucht", betrag(konto.verbraucht))
-            c.metric("Rest", betrag(konto.rest))
+            a.metric("OpenRouter · eingezahlt", betrag(konto.guthaben))
+            b.metric("OpenRouter · verbraucht", betrag(konto.verbraucht))
+            c.metric("OpenRouter · Rest", betrag(konto.rest),
+                     help="Guthaben gibt es nur bei OpenRouter; das Anthropic-Guthaben steht im Dashboard "
+                          "(„Anthropic“ oben).")
 
-    keys = openrouter.keys() + anthropic.keys()
     ohne_limit = [s for s in keys if not s.fehler and s.limit is None and s.limit_abfragbar]
     if ohne_limit:
         st.error(_md("Keys ohne Limit (Risiko): " + ", ".join(f"{s.name} ({s.kennung})" for s in ohne_limit)),

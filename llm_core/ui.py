@@ -68,6 +68,38 @@ def kosten_zeilen(
     return zeilen
 
 
+def kurzstatus_zeilen(
+    konto: "_anbieter.KontoStatus | None",
+    keys: "list[_anbieter.KeyStatus]",
+    schwellen: "_anbieter.Schwellen | None" = None,
+) -> list[str]:
+    """Kurzstatus der Konsole (Seitenleiste): Guthaben, Ampel je Key gezählt, Keys ohne Limit, Verbrauch.
+
+    Markdown-Zeilen für Streamlit (Material-Symbole), ohne Streamlit testbar. Keys nur mit Namen."""
+    zeilen: list[str] = []
+    if konto is not None:
+        if konto.fehler:
+            zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} Guthaben: {konto.fehler}")
+        else:
+            zeilen.append(f"Rest OpenRouter: **{betrag(konto.rest)}**")
+    zaehler: dict[str, int] = {}
+    for s in keys:
+        a = _anbieter.ampel(s, schwellen)
+        zaehler[a] = zaehler.get(a, 0) + 1
+    reihenfolge = (_anbieter.ROT, _anbieter.GELB, _anbieter.GRUEN, _anbieter.GRAU)
+    teile = [f"{AMPEL_ZEICHEN[a]} {zaehler[a]}" for a in reihenfolge if zaehler.get(a)]
+    if teile:
+        zeilen.append(f"{len(keys)} {'Key' if len(keys) == 1 else 'Keys'}: " + " · ".join(teile))
+    ohne_limit = [s.name for s in keys if not s.fehler and s.limit is None and s.limit_abfragbar]
+    if ohne_limit:
+        zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.ROT]} ohne Limit: " + ", ".join(ohne_limit))
+    heute = [s.heute for s in keys if s.heute is not None]
+    monat = [s.monat for s in keys if s.monat is not None]
+    if heute or monat:
+        zeilen.append(f"heute {betrag(sum(heute)) if heute else '–'} · Monat {betrag(sum(monat)) if monat else '–'}")
+    return zeilen
+
+
 def kosten_seitenleiste(
     key_env: str = "OPENROUTER_API_KEY",
     tag: str | None = None,

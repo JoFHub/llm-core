@@ -92,6 +92,32 @@ def test_seitenleiste_ohne_streamlit_klare_meldung(monkeypatch):
         kosten_seitenleiste("OPENROUTER_API_KEY_TEST")
 
 
+def test_kurzstatus_zeilen():
+    from llm_core.ui import AMPEL_ZEICHEN, kurzstatus_zeilen
+    konto = an.KontoStatus("openrouter", guthaben=30.0, verbraucht=13.7)
+    keys = [
+        an.KeyStatus("openrouter", "ta", kennung="sk-or-v1-…1111", limit=10.0, rest=9.9, heute=0.1, monat=0.1),
+        an.KeyStatus("openrouter", "memoria", kennung="sk-or-v1-…2222", limit=None, heute=0.5, monat=3.5),
+        an.KeyStatus("anthropic", "ANTHROPIC_API_KEY", kennung="…3333", limit_abfragbar=False),
+    ]
+    zeilen = kurzstatus_zeilen(konto, keys)
+    rot, gruen, grau = (AMPEL_ZEICHEN[a] for a in (an.ROT, an.GRUEN, an.GRAU))
+    assert zeilen == [
+        "Rest OpenRouter: **16,30 $**",
+        f"3 Keys: {rot} 1 · {gruen} 1 · {grau} 1",
+        f"{rot} ohne Limit: memoria",
+        "heute 0,60 $ · Monat 3,60 $",
+    ]
+    assert not any("1111" in z or "2222" in z for z in zeilen)   # Keys nur mit Namen
+
+
+def test_kurzstatus_ohne_konto_und_keys():
+    from llm_core.ui import kurzstatus_zeilen
+    assert kurzstatus_zeilen(None, []) == []
+    [z] = kurzstatus_zeilen(an.KontoStatus("openrouter", fehler="Zeitüberschreitung"), [])
+    assert "Zeitüberschreitung" in z
+
+
 # -- Konsole: Start und lokale Details ---------------------------------------------
 
 def test_konsole_startbefehl_nur_localhost():

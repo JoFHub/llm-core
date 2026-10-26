@@ -35,7 +35,8 @@ def test_knopfleiste_hilfe_aktualisieren_optionen(at):
     assert [t.value for t in at.title] == ["LLM-Kosten"]
     assert _popover_labels(at) == ["Hilfe", "Optionen"]
     assert at.button(key="aktualisieren").proto.label == "Aktualisieren"
-    assert len(at.sidebar.children) == 0   # keine Seitenleiste mehr
+    sidebar = " ".join(m.value for m in at.sidebar.markdown)
+    assert "Kurzstatus" in sidebar and "1 Key:" in sidebar   # ohne Keys: Anthropic „kein Key“, grau
     links = [(b.proto.label, b.proto.url) for b in at.get("link_button")]
     assert links == [("OpenRouter", "https://openrouter.ai/activity"),
                      ("Anthropic", "https://platform.claude.com/usage")]

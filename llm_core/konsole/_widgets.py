@@ -60,6 +60,12 @@ div[data-testid="stDialog"] [data-testid="stCaptionContainer"] { margin-bottom: 
 div[data-testid="stDialog"] h2 { font-size: 1rem !important; font-weight: 500 !important; }
 div[data-testid="stDialog"] { padding: 1rem !important; }
 [data-testid="stMain"] .stButton button { border-width: 1px !important; }
+/* Seitenleiste (Kurzstatus): schmal und kompakt wie Memoria, Text 0.88rem */
+:is(section, main, aside, nav, div)[data-testid="stSidebar"] { min-width: 248px !important; max-width: 248px !important; width: 248px !important; }
+[data-testid="stSidebarHeader"] { padding: 0.6rem 1rem 0.2rem !important; }
+[data-testid="stSidebarUserContent"] { padding-top: 0.15rem !important; padding-bottom: 0.75rem !important; }
+:is(section, main, aside, nav, div)[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.25rem !important; }
+:is(section, main, aside, nav, div)[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { font-size: 0.88rem !important; line-height: 1.5 !important; }
 </style>
 """
 

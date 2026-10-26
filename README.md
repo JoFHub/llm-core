@@ -230,7 +230,7 @@ python -m llm_core.konsole            # http://localhost:8510 (--port, LLM_CORE_
 
 Stil und Bedienung wie Memoria (GUI-Standards in `memoria/CLAUDE.md`): Theme hell/dunkel in
 `llm_core/konsole/.streamlit/config.toml`, globales CSS und Knopfleiste unter dem Titel in
-`llm_core/konsole/_widgets.py` — „Hilfe“, „Aktualisieren“, „Optionen“ (Ampel-Schwelle, Tage, Zuordnung, weitere DB), dazu Links zu den Dashboards von OpenRouter und Anthropic.
+`llm_core/konsole/_widgets.py` — „Hilfe“, „Aktualisieren“, „Optionen“ (Ampel-Schwelle, Tage, Zuordnung, weitere DB), dazu Links zu den Dashboards von OpenRouter und Anthropic. In der Seitenleiste ein Kurzstatus (`ui.kurzstatus_zeilen`): Rest-Guthaben, Ampel je Key gezählt, Keys ohne Limit, Verbrauch heute/Monat.
 
 Die Konsole hört nur auf `localhost` und hat keine eigene Anmeldung. Für einen Server-Betrieb (`--adresse`) gehört
 sie hinter eine vorhandene Anmeldung.
