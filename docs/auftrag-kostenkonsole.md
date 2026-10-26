@@ -21,7 +21,8 @@ Kopie in Probatio).
   (Docker, je Kunde eine Instanz), Vorführ-Laptop. Eine lokale Datenbank zeigt nie alles.
 - Der **echte Verbrauch** steht beim Anbieter, je Key. Regel: ein OpenRouter-Key je App bzw. Kundenprofil, jeder mit
   Limit (in Probatio z. B. `OPENROUTER_API_KEY_VISIBILIA`, Limit 10 $). Probatio fragt heute schon
-  `GET https://openrouter.ai/api/v1/key` ab (Verbrauch, Limit, heute, Monat) — Code in `probatio/rag/kosten.py`.
+  `GET https://openrouter.ai/api/v1/key` ab (Verbrauch, Limit, heute, Monat) — Code im Anhang (das Repo Probatio
+  ist privat und für diese Sitzung nicht nötig).
 
 ## Entscheidungen (Nutzer, 2026-10-26)
 
@@ -104,3 +105,66 @@ Porta des Nutzers.
 - Branch und Pull Request gegen `main` mit kurzer Beschreibung, was gebaut ist, was getestet ist und was nicht.
 - Version in `pyproject.toml` anheben (z. B. 0.2.0) und das Extra `ui` eintragen.
 - Offene Fragen und Annahmen (z. B. zu API-Feldern) im PR auflisten.
+
+## Anhang: heutige Kostenanzeige in Probatio (Stand 2026-10-26)
+
+Zur Orientierung, was der Baustein später ersetzt. Key-Regel in Probatio: `OPENROUTER_API_KEY_<PROFIL>` (z. B.
+`OPENROUTER_API_KEY_VISIBILIA`) hat Vorrang vor dem allgemeinen `OPENROUTER_API_KEY`; der Profilname ist auch der
+`tag` in der Kosten-DB (`cost_tracker.set_tag_source(profile_name)`).
+
+Abfrage beim Anbieter (`probatio/rag/kosten.py`):
+
+```python
+def openrouter_status(profile: str | None = None, timeout: float = 5) -> dict | None:
+    """Verbrauch und Limit des OpenRouter-Keys des Profils in $: {usage, usage_daily, usage_monthly, limit,
+    limit_remaining}. None ohne Key oder wenn OpenRouter nicht antwortet. Kostet nichts."""
+    key = api_key("openrouter", profile)
+    if not key:
+        return None
+    req = urllib.request.Request("https://openrouter.ai/api/v1/key", headers={"Authorization": f"Bearer {key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode()).get("data") or {}
+    except Exception:
+        return None
+    return {k: data.get(k) for k in ("usage", "usage_daily", "usage_monthly", "limit", "limit_remaining")}
+
+
+def local_summary(days: int = 30) -> dict[str, dict[str, dict]]:
+    """Aufzeichnung dieser Installation: {profil: {anbieter: {cost, calls, last}}}; „“ = ohne Profilnamen."""
+    out: dict[str, dict[str, dict]] = {}
+    for row in cost_tracker.tag_summary(days):
+        out.setdefault(row["tag"], {})[row["provider"]] = {
+            "cost": row["cost_usd"] or 0.0, "calls": row["calls"], "last": row["last"]}
+    return out
+```
+
+Seitenleiste (`probatio/utils.py`, Streamlit; Status 60 s zwischengespeichert mit `st.cache_data(ttl=60)`):
+
+```python
+def fmt_cost(amount: float, cur: str = "$") -> str:
+    """„12,40 $“; unter 1 mit drei Nachkommastellen („0,012 $“ — eine Anfrage kostet oft nur 0,1 Cent),
+    Beträge unter 0,1 Cent als „< 0,001 $“."""
+    if 0 < amount < 0.0005:
+        return f"< {fmt_number(0.001, 3)} {cur}"
+    return f"{fmt_number(amount, 3 if 0 < amount < 1 else 2)} {cur}"
+
+
+def sidebar_cost_block():
+    """Kosten des aktiven Profils: OpenRouter-Key beim Anbieter (Verbrauch von Limit), sonst die
+    Aufzeichnung dieser Installation der letzten 30 Tage."""
+    with st.container(key="sidebar_cost"):
+        status = openrouter_status(profile_name()) if llm_available("openrouter") else None
+        if status and status.get("usage") is not None:
+            limit = f" von {fmt_cost(status['limit'])}" if status.get("limit") else ""
+            st.caption(f":material/payments: Kosten {profile_name()}: {fmt_cost(status['usage'])}{limit}  \n"
+                       f"OpenRouter-Key · heute {fmt_cost(status.get('usage_daily') or 0)}")
+            return
+        local = local_summary(30).get(profile_name(), {})
+        if local:
+            total = " · ".join(fmt_cost(v["cost"], currency(b)) for b, v in local.items())
+            st.caption(f":material/payments: Kosten {profile_name()}: {total}  \nletzte 30 Tage, dieser Rechner")
+```
+
+Darstellung heute: `Kosten visibilia: 0,412 $ von 10,00 $` / `OpenRouter-Key · heute 0,031 $` (deutsche
+Zahlenformate: Komma, `$` nachgestellt). Der Baustein soll mindestens das leisten, plus Ampel.
