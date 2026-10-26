@@ -51,7 +51,7 @@ def test_zeilen_mit_limit(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY_TEST", KEY)
     fest = Fest(an.KeyStatus("openrouter", "x", limit=10.0, rest=1.5, verbrauch_gesamt=8.5, heute=0.5, monat=6.0))
     zeilen = kosten_zeilen("OPENROUTER_API_KEY_TEST", adapter=fest)
-    assert zeilen == ["🟡 8,50 $ von 10,00 $ (85 %)", "heute 0,50 $ · Monat 6,00 $"]
+    assert zeilen == [":orange[:material/warning:] 8,50 $ von 10,00 $ (85 %)", "heute 0,50 $ · Monat 6,00 $"]
     assert fest.aufrufe == [KEY]
     assert not any("a1b2" in z or KEY in z for z in zeilen)   # nichts vom Key im HTML
 
@@ -61,10 +61,10 @@ def test_zeilen_ohne_limit_und_monatslimit(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY_TEST", KEY)
     zeilen = kosten_zeilen("OPENROUTER_API_KEY_TEST",
                            adapter=Fest(an.KeyStatus("openrouter", "x", verbrauch_gesamt=3.0, heute=0, monat=1)))
-    assert zeilen[0] == "🔴 3,00 $ · ohne Limit"
+    assert zeilen[0] == ":red[:material/error:] 3,00 $ · ohne Limit"
     zeilen = kosten_zeilen("OPENROUTER_API_KEY_TEST", adapter=Fest(an.KeyStatus(
         "openrouter", "x", limit=10.0, rest=9.0, verbrauch_gesamt=50.0, limit_reset="monthly")))
-    assert zeilen[0] == "🟢 1,00 $ von 10,00 $ Monat (10 %)"
+    assert zeilen[0] == ":green[:material/check_circle:] 1,00 $ von 10,00 $ Monat (10 %)"
 
 
 def test_zeilen_fehler_zeigt_lokale_kosten(monkeypatch):
@@ -74,14 +74,14 @@ def test_zeilen_fehler_zeigt_lokale_kosten(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY_TEST", KEY)
     fest = Fest(an.KeyStatus("openrouter", "x", fehler="Key ungültig oder widerrufen (401)"))
     zeilen = kosten_zeilen("OPENROUTER_API_KEY_TEST", tag="visibilia", adapter=fest)
-    assert zeilen == ["⚪ Anbieter: Key ungültig oder widerrufen (401)", "lokal 30 Tage: 1,25 $ (Schätzung)"]
+    assert zeilen == [":gray[:material/help:] Anbieter: Key ungültig oder widerrufen (401)", "lokal 30 Tage: 1,25 $ (Schätzung)"]
 
 
 def test_zeilen_ohne_key_fragt_nicht_an():
     from llm_core.ui import kosten_zeilen
     fest = Fest(an.KeyStatus("openrouter", "x"))
     zeilen = kosten_zeilen("OPENROUTER_API_KEY_TEST", adapter=fest)
-    assert zeilen == ["⚪ kein Key (OPENROUTER_API_KEY_TEST)", "lokal 30 Tage: 0,00 $ (Schätzung)"]
+    assert zeilen == [":gray[:material/help:] kein Key (OPENROUTER_API_KEY_TEST)", "lokal 30 Tage: 0,00 $ (Schätzung)"]
     assert fest.aufrufe == []
 
 

@@ -329,11 +329,14 @@ def test_key_anlegen_ohne_name_oder_provisioning():
 JETZT = datetime(2026, 10, 26, 15, 0, tzinfo=timezone.utc)
 
 
-def test_anthropic_nicht_eingerichtet():
-    a = an.Anthropic(admin_key="", transport=FakeTransport())
+def test_anthropic_ohne_admin_key_nur_api_keys():
+    a = an.Anthropic(admin_key="", transport=FakeTransport(), api_keys={"ANTHROPIC_API_KEY": "sk-ant-api03-" + "x" * 40 + "Wz9q"})
     assert not a.eingerichtet()
     [s] = a.keys()
-    assert s.fehler == "nicht eingerichtet" and an.ampel(s) == an.GRAU
+    assert s.name == "ANTHROPIC_API_KEY" and s.kennung.endswith("Wz9q") and "x" * 20 not in s.kennung
+    assert s.fehler is None and s.heute is None and an.ampel(s) == an.GRAU
+    [leer] = an.Anthropic(admin_key="", transport=FakeTransport(), api_keys={}).keys()
+    assert leer.fehler == "kein Key" and an.ampel(leer) == an.GRAU
 
 
 def test_anthropic_kosten_report():
@@ -349,7 +352,7 @@ def test_anthropic_kosten_report():
              "results": [{"amount": "123.0", "currency": "USD"}]},
         ], "has_more": False, "next_page": None}
     t = FakeTransport({("GET", "/organizations/cost_report"): bericht})
-    [s] = an.Anthropic(admin_key=ADMIN, transport=t, jetzt=lambda: JETZT).keys()
+    [s] = an.Anthropic(admin_key=ADMIN, transport=t, jetzt=lambda: JETZT, api_keys={}).keys()
     assert s.fehler is None
     assert s.heute == pytest.approx(1.23)
     assert s.monat == pytest.approx(2.0 + 1.23)
@@ -363,7 +366,7 @@ def test_anthropic_kosten_report():
 
 def test_anthropic_fehler():
     t = FakeTransport({("GET", "/organizations/cost_report"): (401, {"error": {"message": "bad"}})})
-    [s] = an.Anthropic(admin_key=ADMIN, transport=t, jetzt=lambda: JETZT).keys()
+    [s] = an.Anthropic(admin_key=ADMIN, transport=t, jetzt=lambda: JETZT, api_keys={}).keys()
     assert "401" in s.fehler and ADMIN not in s.fehler
 
 

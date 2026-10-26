@@ -17,10 +17,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-ui = ["streamlit>=1.37"]
+ui = ["streamlit>=1.50"]
 keyring = ["keyring>=24"]
 dev = ["pytest>=8.0", "pytest-mock>=3.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["llm_core*"]
+
+[tool.setuptools.package-data]
+# Theme der Konsole (Streamlit liest es neben app.py)
+"llm_core.konsole" = [".streamlit/config.toml"]

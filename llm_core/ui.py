@@ -14,11 +14,12 @@ import os
 from llm_core import anbieter as _anbieter
 from llm_core import cost_tracker
 
+# Material-Symbole in Streamlit-Markdown statt farbiger Emojis (GUI-Standard wie Memoria)
 AMPEL_ZEICHEN = {
-    _anbieter.GRUEN: "🟢",
-    _anbieter.GELB: "🟡",
-    _anbieter.ROT: "🔴",
-    _anbieter.GRAU: "⚪",
+    _anbieter.GRUEN: ":green[:material/check_circle:]",
+    _anbieter.GELB: ":orange[:material/warning:]",
+    _anbieter.ROT: ":red[:material/error:]",
+    _anbieter.GRAU: ":gray[:material/help:]",
 }
 
 

@@ -3,7 +3,7 @@ Anbieter-Status — echter Verbrauch, Limits und Keys direkt beim Anbieter, ohne
 
 Einheitliches Ergebnis je Key (KeyStatus) und je Konto (KontoStatus), dazu die Ampel.
 Adapter: OpenRouter (eigener Key, mit Provisioning-/Management-Key alle Keys, Guthaben und
-Verwaltung) und Anthropic (Admin-API, Kosten der Organisation; ohne Admin-Key „nicht eingerichtet“).
+Verwaltung) und Anthropic (API-Keys gekürzt; mit Admin-Key auch Kosten der Organisation).
 
 Grundsätze:
 - Ein Key verlässt nie den Prozess über Rückgabewerte, Fehlermeldungen oder Logs; angezeigt wird nur
@@ -530,14 +530,19 @@ class Anthropic:
     amount als Dezimal-String in Cent; Seiten über has_more/next_page.
 
     Die Admin-API liefert Kosten der Organisation (nicht je API-Key) und kein Ausgabelimit; der Eintrag
-    hat deshalb limit_abfragbar=False (Ampel grau). Ohne Admin-Key: „nicht eingerichtet“.
+    hat deshalb limit_abfragbar=False (Ampel grau). Ohne Admin-Key entfällt er.
+
+    Die API-Keys aus der Umgebung (ANTHROPIC_API_KEY*) erscheinen immer, nur gekürzt und ohne Verbrauch:
+    Anthropic liefert je Key weder Verbrauch noch Limit (Verbrauch im Dashboard der Console).
     """
     anbieter = "anthropic"
 
     def __init__(self, admin_key: str | None = None, transport: Transport | None = None,
                  timeout: float = STANDARD_TIMEOUT, cache_ttl: float = STANDARD_CACHE_TTL,
-                 basis_url: str = ANTHROPIC_BASIS, jetzt: Callable[[], datetime] | None = None) -> None:
+                 basis_url: str = ANTHROPIC_BASIS, jetzt: Callable[[], datetime] | None = None,
+                 api_keys: dict[str, str] | None = None) -> None:
         self._admin_key = anthropic_admin_key() if admin_key is None else (admin_key or None)
+        self._api_keys = keys_aus_umgebung("ANTHROPIC_API_KEY") if api_keys is None else dict(api_keys)
         self._client = _Client(transport, timeout, cache_ttl)
         self.basis_url = basis_url.rstrip("/")
         self._jetzt = jetzt or (lambda: datetime.now(timezone.utc))
@@ -569,9 +574,14 @@ class Anthropic:
         return tage
 
     def keys(self) -> list[KeyStatus]:
+        api = [KeyStatus(self.anbieter, n, kennung=kuerze_key(k), limit_abfragbar=False)
+               for n, k in self._api_keys.items()]
+        if not api and not self._admin_key:
+            api = [KeyStatus(self.anbieter, "ANTHROPIC_API_KEY", limit_abfragbar=False, fehler="kein Key")]
+        return api + (self._organisation() if self._admin_key else [])
+
+    def _organisation(self) -> list[KeyStatus]:
         name = "Organisation (Admin-API)"
-        if not self._admin_key:
-            return [KeyStatus(self.anbieter, name, limit_abfragbar=False, fehler="nicht eingerichtet")]
         jetzt = self._jetzt()
         monatsanfang = jetzt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         try:

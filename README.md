@@ -190,7 +190,7 @@ s.monat, s.heute, s.limit, s.rest, s.fehler       # Fehler (401, 402, Timeout) s
 anbieter.ampel(s)                                 # "gruen" | "gelb" | "rot" | "grau"
 o.keys()                                          # mit Provisioning-Key alle Keys des Kontos, sonst OPENROUTER_API_KEY*
 o.konto()                                         # Guthaben (nur mit Provisioning-Key)
-anbieter.Anthropic().keys()                       # Kosten der Organisation über die Admin-API
+anbieter.Anthropic().keys()                       # API-Keys (gekürzt); mit Admin-Key auch Kosten der Organisation
 ```
 
 Abfragen werden 60 s zwischengespeichert (`anbieter.cache_leeren()`), Timeout 10 s. Keys erscheinen nur gekürzt
@@ -209,7 +209,8 @@ from llm_core.ui import kosten_seitenleiste
 kosten_seitenleiste(key_env="OPENROUTER_API_KEY_VISIBILIA", tag="visibilia", titel="Kosten")
 ```
 
-Zwei bis drei kleine Zeilen: `🟢 4,12 $ von 10,00 $ (41 %)`, `heute 0,35 $ · Monat 3,10 $`. Ohne Key oder bei
+Zwei bis drei kleine Zeilen: `:green[:material/check_circle:] 4,12 $ von 10,00 $ (41 %)`
+(Ampel als farbiges Material-Symbol), `heute 0,35 $ · Monat 3,10 $`. Ohne Key oder bei
 Fehler stattdessen die lokale Schätzung der letzten 30 Tage aus der Kosten-DB (nur `tag`). Der Key bleibt im
 Server-Prozess; ins HTML kommt nur der Text. `kosten_zeilen(...)` liefert dieselben Zeilen ohne Streamlit.
 
@@ -220,12 +221,16 @@ python -m llm_core.konsole            # http://localhost:8510 (--port, LLM_CORE_
 ```
 
 - **Übersicht:** alle Keys mit Verbrauch heute/Monat/gesamt, Limit, Ampel; Guthaben; Warnung bei Keys ohne Limit.
-- **Verwaltung** (nur mit Provisioning-Key): Limit ändern, Key deaktivieren/aktivieren, neuen Key anlegen. Jede
+- **OpenRouter verwalten** (nur OpenRouter, nur mit Provisioning-Key): Limit ändern, Key deaktivieren/aktivieren, neuen Key anlegen. Jede
   Änderung zeigt vorher/nachher und braucht eine Bestätigung. Der Klartext eines neuen Keys wird genau einmal
   angezeigt (sofort in die `.env` der App bzw. den Passwortmanager übernehmen) und nie gespeichert oder geloggt.
 - **Details lokal:** Kosten je Tag, Modell und `tag` aus einer wählbaren Kosten-DB (`~/.llm_core`, `~/.memoria`,
   `LLM_CORE_DATA_DIR`, weitere über `LLM_CORE_KONSOLE_DBS`, getrennt mit `;` unter Windows bzw. `:` sonst).
   Die DB wird nur lesend geöffnet.
+
+Stil und Bedienung wie Memoria (GUI-Standards in `memoria/CLAUDE.md`): Theme hell/dunkel in
+`llm_core/konsole/.streamlit/config.toml`, globales CSS und Knopfleiste unter dem Titel in
+`llm_core/konsole/_widgets.py` — „Hilfe“, „Aktualisieren“, „Optionen“ (Ampel-Schwelle, Tage, Zuordnung, weitere DB), dazu Links zu den Dashboards von OpenRouter und Anthropic.
 
 Die Konsole hört nur auf `localhost` und hat keine eigene Anmeldung. Für einen Server-Betrieb (`--adresse`) gehört
 sie hinter eine vorhandene Anmeldung.
@@ -236,7 +241,7 @@ sie hinter eine vorhandene Anmeldung.
 |---|---|
 | `OPENROUTER_API_KEY*` | Keys der Apps (ein Key je App bzw. Kundenprofil, jeder mit Limit) |
 | `OPENROUTER_PROVISIONING_KEY` | Provisioning-/Management-Key: alle Keys, Guthaben, Verwaltung (Alias `OPENROUTER_MANAGEMENT_KEY`) |
-| `ANTHROPIC_ADMIN_KEY` | Admin-Key (`sk-ant-admin…`) für die Kosten der Organisation; ohne: „nicht eingerichtet“ |
+| `ANTHROPIC_ADMIN_KEY` | optional: Admin-Key (`sk-ant-admin…`) für die Kosten der Organisation; ohne: nur die API-Keys `ANTHROPIC_API_KEY*`, gekürzt und ohne Verbrauch |
 
 1. Bei OpenRouter unter *Settings → Management Keys* (früher *Provisioning Keys*) einen Key anlegen.
 2. In die `.env` des Rechners eintragen (`OPENROUTER_PROVISIONING_KEY=…`), nie in Git. Die `.env` im
