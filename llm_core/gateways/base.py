@@ -34,6 +34,16 @@ class LLMGateway(ABC):
     ) -> tuple[str, str]:
         raise NotImplementedError(f"{type(self).__name__} unterstützt kein Multimodal.")
 
+    def transcribe(
+        self,
+        *,
+        audio: bytes,
+        audio_format: str,
+        model_name: str,
+        language: str | None = None,
+    ) -> tuple[str, str]:
+        raise NotImplementedError(f"{type(self).__name__} unterstützt keine Spracherkennung.")
+
     def chat_with_history(
         self,
         *,

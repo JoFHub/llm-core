@@ -1,6 +1,7 @@
 """OpenAI-kompatibler Gateway: OpenAI, OpenRouter, Mistral."""
 from __future__ import annotations
 
+import base64
 import logging
 import os
 
@@ -298,3 +299,37 @@ class OpenAICompatGateway(LLMGateway):
         used_model = resp.model or model_name
         _track(self._provider, used_model, resp.usage)
         return resp.choices[0].message.content or "", used_model
+
+    def transcribe(
+        self,
+        *,
+        audio: bytes,
+        audio_format: str,
+        model_name: str,
+        language: str | None = None,
+    ) -> tuple[str, str]:
+        """Sprache → Text über POST /audio/transcriptions. Nur OpenRouter: dort
+        nimmt der Endpunkt JSON mit base64-Audio (input_audio) und liefert in
+        usage.cost den Ist-Preis -- s. openrouter.ai/docs/guides/overview/multimodal/stt.
+        OpenAI/Mistral direkt erwarten multipart-Upload, hier nicht umgesetzt."""
+        if self._provider != "openrouter":
+            raise NotImplementedError(f"Spracherkennung nur über OpenRouter, nicht '{self._provider}'.")
+        body: dict = {
+            "model": model_name,
+            "input_audio": {"data": base64.b64encode(audio).decode(), "format": audio_format},
+        }
+        if language:
+            body["language"] = language
+        resp = self._client.post("/audio/transcriptions", body=body, cast_to=object)
+        usage = resp.get("usage") or {}
+        try:
+            from llm_core.cost_tracker import record
+            cost = usage.get("cost")
+            record(
+                self._provider, model_name,
+                usage.get("input_tokens") or 0, usage.get("output_tokens") or 0,
+                cost_usd_override=float(cost) if cost is not None else None,
+            )
+        except Exception:
+            pass
+        return (resp.get("text") or "").strip(), model_name

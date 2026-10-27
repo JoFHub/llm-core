@@ -637,3 +637,62 @@ def test_anthropic_chat_with_history_handles_empty_content():
             model_name="claude-test", temperature=0.1, max_tokens=100,
         )
         assert result == ""
+
+
+def test_openai_compat_openrouter_transcribe_sends_base64_and_records_cost():
+    """Spracherkennung über POST /audio/transcriptions (JSON mit base64-Audio);
+    der Ist-Preis aus usage.cost landet in der Kosten-DB."""
+    import base64
+    from llm_core.gateways.openai_compat import OpenAICompatGateway
+
+    with patch("openai.OpenAI") as MockOpenAI, \
+         patch("llm_core.cost_tracker.record") as mock_record:
+        mock_client = MagicMock()
+        MockOpenAI.return_value = mock_client
+        mock_client.post.return_value = {
+            "text": " Welche Kurse passen? ",
+            "usage": {"seconds": 7, "input_tokens": 5, "output_tokens": 36, "cost": 0.0004},
+        }
+
+        gateway = OpenAICompatGateway(provider="openrouter", api_key="dummy")
+        text, model = gateway.transcribe(
+            audio=b"RIFF", audio_format="wav",
+            model_name="mistralai/voxtral-mini-transcribe-3-0", language="de",
+        )
+
+        assert text == "Welche Kurse passen?"
+        assert model == "mistralai/voxtral-mini-transcribe-3-0"
+        path = mock_client.post.call_args.args[0]
+        body = mock_client.post.call_args.kwargs["body"]
+        assert path == "/audio/transcriptions"
+        assert body == {
+            "model": "mistralai/voxtral-mini-transcribe-3-0",
+            "input_audio": {"data": base64.b64encode(b"RIFF").decode(), "format": "wav"},
+            "language": "de",
+        }
+        mock_record.assert_called_once_with(
+            "openrouter", "mistralai/voxtral-mini-transcribe-3-0", 5, 36,
+            cost_usd_override=pytest.approx(0.0004),
+        )
+
+
+def test_openai_compat_transcribe_only_openrouter():
+    from llm_core.gateways.openai_compat import OpenAICompatGateway
+
+    with patch("openai.OpenAI"):
+        gateway = OpenAICompatGateway(provider="mistral", api_key="dummy")
+        with pytest.raises(NotImplementedError):
+            gateway.transcribe(audio=b"", audio_format="wav", model_name="x")
+
+
+def test_runner_transcribe_uses_config_model():
+    from llm_core import LLMBackend, LLMConfig, LLMRunner
+
+    with patch("openai.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        MockOpenAI.return_value = mock_client
+        mock_client.post.return_value = {"text": "Hallo"}
+        runner = LLMRunner(LLMConfig(backend=LLMBackend.OPENROUTER,
+                                     model="openai/whisper-large-v3-turbo", api_key="dummy"))
+        assert runner.transcribe(b"RIFF", language="de") == "Hallo"
+        assert mock_client.post.call_args.kwargs["body"]["model"] == "openai/whisper-large-v3-turbo"

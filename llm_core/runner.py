@@ -154,6 +154,17 @@ class LLMRunner:
         )
         return response
 
+    def transcribe(self, audio: bytes, audio_format: str = "wav", language: str | None = None) -> str:
+        """Sprache → Text (Modell = config.model, z. B. ein Transkriptionsmodell bei OpenRouter).
+        language: ISO-639-1 (z. B. "de"), ohne Angabe erkennt das Modell die Sprache selbst."""
+        text, _ = self._gateway.transcribe(
+            audio=audio,
+            audio_format=audio_format,
+            model_name=self._config.model,
+            language=language,
+        )
+        return text
+
     def call_single(self, system: str, user: str) -> dict[str, Any]:
         """LLM-Aufruf → JSON-Dict (z.B. Metadaten-Extraktion). Mit Retry."""
         last_exc: Exception | None = None
