@@ -48,7 +48,7 @@ class LLMRunner:
         elif config.backend == LLMBackend.ANTHROPIC:
             if not _ANTHROPIC_AVAILABLE:
                 raise ImportError("pip install anthropic")
-            self._gateway = AnthropicGateway(api_key=config.api_key or None)
+            self._gateway = AnthropicGateway(api_key=config.api_key or None, effort=config.effort)
 
         elif config.backend in (LLMBackend.OPENROUTER, LLMBackend.MISTRAL, LLMBackend.OPENAI):
             if not _OPENAI_AVAILABLE:

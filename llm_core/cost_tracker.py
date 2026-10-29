@@ -18,7 +18,10 @@ from typing import Callable
 # Preistabelle: (input_per_1M_usd, output_per_1M_usd)
 # ---------------------------------------------------------------------------
 _PRICING: dict[str, tuple[float, float]] = {
-    # Anthropic — direkt
+    # Anthropic — direkt (Claude 5.5: Preisliste der Anthropic-API, Stand 2026-10)
+    "claude-opus-5-5":                        (4.0,    20.0),
+    "claude-sonnet-5-5":                      (2.0,    10.0),
+    "claude-haiku-5-5":                       (0.10,   0.50),
     "claude-opus-4-8":                        (15.0,   75.0),
     "claude-opus-4-7":                        (15.0,   75.0),
     "claude-opus-4-5":                        (15.0,   75.0),

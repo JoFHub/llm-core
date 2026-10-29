@@ -639,6 +639,53 @@ def test_anthropic_chat_with_history_handles_empty_content():
         assert result == ""
 
 
+def test_anthropic_chat_streams_passes_effort_and_skips_thinking():
+    """chat() streamt (lange Antworten über der SDK-Grenze ohne Streaming),
+    reicht effort als output_config durch und liefert nur die Textblöcke --
+    Opus 5.5 & Co. setzen einen thinking-Block davor."""
+    from llm_core.gateways.anthropic import AnthropicGateway
+
+    with patch("anthropic.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="thinking", thinking=""),
+                                 MagicMock(type="text", text="Kapitel")]
+        mock_response.stop_reason = "end_turn"
+        mock_response.usage.input_tokens = 1
+        mock_response.usage.output_tokens = 1
+        stream = mock_client.messages.stream.return_value.__enter__.return_value
+        stream.get_final_message.return_value = mock_response
+
+        gateway = AnthropicGateway(api_key="dummy", effort="medium")
+        text, _ = gateway.chat(system="s", user="u", model_name="claude-test",
+                               temperature=0.1, max_tokens=32000)
+
+        assert text == "Kapitel"
+        kwargs = mock_client.messages.stream.call_args.kwargs
+        assert kwargs["output_config"] == {"effort": "medium"}
+        assert kwargs["max_tokens"] == 32000
+        mock_client.messages.create.assert_not_called()
+
+
+def test_anthropic_chat_without_effort_sends_no_output_config():
+    from llm_core.gateways.anthropic import AnthropicGateway
+
+    with patch("anthropic.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(type="text", text="ok")]
+        mock_response.usage.input_tokens = 1
+        mock_response.usage.output_tokens = 1
+        stream = mock_client.messages.stream.return_value.__enter__.return_value
+        stream.get_final_message.return_value = mock_response
+
+        AnthropicGateway(api_key="dummy").chat(system="s", user="u", model_name="m",
+                                               temperature=0.1, max_tokens=10)
+        assert "output_config" not in mock_client.messages.stream.call_args.kwargs
+
+
 def test_openai_compat_openrouter_transcribe_sends_base64_and_records_cost():
     """Spracherkennung über POST /audio/transcriptions (JSON mit base64-Audio);
     der Ist-Preis aus usage.cost landet in der Kosten-DB."""

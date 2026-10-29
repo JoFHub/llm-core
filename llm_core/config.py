@@ -68,6 +68,9 @@ class LLMConfig:
     # (qwen3 denkt), False = aus. Für JSON-Extraktion spart False ein Vielfaches an
     # Rechenzeit. Andere Backends ignorieren den Wert.
     think: bool | None = None
+    # Denktiefe bei Anthropic (output_config.effort: "low" … "max"): None =
+    # Modell-Standard. Andere Backends ignorieren den Wert.
+    effort: str | None = None
     privacy_mode: bool = False
     cost_db_path: Path = field(default_factory=lambda: Path("~/.llm_core/costs.sqlite"))
 

@@ -80,18 +80,31 @@ def _mark_last_tool_cacheable(tools: list[dict]) -> list[dict]:
     return tools
 
 
+def _text(msg) -> str:
+    """Alle Textbloecke der Antwort -- bei Modellen mit Denkspur (Opus 5.5,
+    Sonnet 5.5, Haiku 5.5 denken immer) steht vorn ein thinking-Block, dort
+    brach msg.content[0].text ab."""
+    return "".join(b.text for b in msg.content if getattr(b, "type", None) == "text")
+
+
 class AnthropicGateway(LLMGateway):
     # `temperature` wird nicht an die API weitergereicht: seit anthropic-sdk 1.x
     # kennt Messages.create() diesen Parameter nicht mehr (ersetzt durch
     # `output_config.effort`). Bleibt in den Methodensignaturen fuer die
     # gemeinsame LLMGateway-Schnittstelle, wird hier aber ignoriert.
-    def __init__(self, api_key: str | None = None) -> None:
+    def __init__(self, api_key: str | None = None, effort: str | None = None) -> None:
         if not _AVAILABLE:
             raise ImportError("pip install anthropic")
         key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not key:
             raise ValueError("ANTHROPIC_API_KEY nicht gesetzt.")
         self._client = _anthropic.Anthropic(api_key=key)
+        # output_config.effort (low … max), None = Modell-Standard; steuert
+        # Denktiefe und damit, wie viel von max_tokens die Denkspur verbraucht
+        self._effort = effort
+
+    def _effort_kwargs(self) -> dict:
+        return {"output_config": {"effort": self._effort}} if self._effort else {}
 
     def chat(
         self,
@@ -107,14 +120,20 @@ class AnthropicGateway(LLMGateway):
         if json_mode:
             user_content += "\n\nAntworte ausschließlich mit gültigem JSON, ohne Erklärungen."
 
-        msg = self._client.messages.create(
+        # Streaming: lange Antworten (ein Romankapitel plus Denkspur) brauchen
+        # mehr als die ~21.000 Tokens, die das SDK ohne Streaming zulaesst
+        with self._client.messages.stream(
             model=model_name,
             max_tokens=max_tokens,
             system=_cacheable_system(system),
             messages=[{"role": "user", "content": user_content}],
-        )
+            **self._effort_kwargs(),
+        ) as stream:
+            msg = stream.get_final_message()
         _track(model_name, msg.usage)
-        return msg.content[0].text, model_name
+        if msg.stop_reason == "max_tokens":
+            logger.warning("Antwort von %s bei max_tokens=%s abgeschnitten", model_name, max_tokens)
+        return _text(msg), model_name
 
     def chat_multimodal(
         self,
@@ -137,9 +156,10 @@ class AnthropicGateway(LLMGateway):
             max_tokens=max_tokens,
             system=_cacheable_system(system),
             messages=[{"role": "user", "content": content}],
+            **self._effort_kwargs(),
         )
         _track(model_name, msg.usage)
-        return msg.content[0].text, model_name
+        return _text(msg), model_name
 
     def chat_with_history(
         self,
@@ -162,11 +182,12 @@ class AnthropicGateway(LLMGateway):
             max_tokens=max_tokens,
             system=_cacheable_system(system),
             messages=_mark_last_message_cacheable(to_anthropic_messages(messages)),
+            **self._effort_kwargs(),
         )
         _track(model_name, msg.usage)
-        # content kann ein leerer Block sein (z.B. stop_reason ohne Text) —
-        # Aufrufer erwarten einen String, kein IndexError.
-        return msg.content[0].text if msg.content else ""
+        # content kann leer sein (z.B. stop_reason ohne Text) -- Aufrufer
+        # erwarten einen String, kein IndexError.
+        return _text(msg)
 
     def chat_structured(
         self,
