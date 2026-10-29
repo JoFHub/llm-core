@@ -45,11 +45,15 @@ def _seit(tage: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=tage)).isoformat()
 
 
-def details(db: Path, tage: int = 30, tag: str | None = None) -> dict:
+def details(db: Path, tage: int = 30, tag: str | None = None, provider: str | None = None) -> dict:
     """{'je_tag': [...], 'je_modell': [...], 'je_tag_zuordnung': [...], 'summe': float, 'fehler': str|None}.
-    tag: nur diese Zuordnung (None = alle)."""
+    tag: nur diese Zuordnung (None = alle); provider: nur dieser Anbieter (None = alle)."""
     leer = {"je_tag": [], "je_modell": [], "je_tag_zuordnung": [], "summe": 0.0, "fehler": None}
     where, args = "timestamp >= ?", [_seit(tage)]
+    if provider is not None:
+        where += " AND provider = ?"
+        args.append(provider)
+    basis_where, basis_args = where, list(args)
     if tag is not None:
         where += " AND tag = ?"
         args.append(tag)
@@ -64,8 +68,7 @@ def details(db: Path, tage: int = 30, tag: str | None = None) -> dict:
         if "tag" not in spalten:  # Alt-DB ohne Zuordnung
             if tag:
                 return leer
-            where = "timestamp >= ?"
-            args = args[:1]
+            where, args = basis_where, basis_args
             tag_ausdruck = "''"
         else:
             tag_ausdruck = "tag"
@@ -91,3 +94,29 @@ def details(db: Path, tage: int = 30, tag: str | None = None) -> dict:
         "summe": sum(r[1] or 0.0 for r in je_tag),
         "fehler": None,
     }
+
+
+def kosten_seit(dbs: list[Path], seit: datetime, provider: str | None = None) -> tuple[float, str | None]:
+    """Summe der Kosten seit einem Zeitpunkt (mit Zeitzone) über mehrere DBs, optional nur ein Anbieter.
+    Gibt (Summe, Fehler) zurück; eine nicht lesbare DB zählt nicht mit und steht im Fehlertext."""
+    where, args = "timestamp >= ?", [seit.astimezone(timezone.utc).isoformat()]
+    if provider is not None:
+        where += " AND provider = ?"
+        args.append(provider)
+    summe, fehler = 0.0, []
+    for db in dbs:
+        try:
+            conn = _lesen(db)
+        except sqlite3.Error as e:
+            fehler.append(f"{db}: {e}")
+            continue
+        try:
+            if conn.execute("PRAGMA table_info(llm_usage)").fetchone() is None:
+                continue
+            summe += conn.execute(f"SELECT COALESCE(SUM(cost_usd), 0) FROM llm_usage WHERE {where}",
+                                  args).fetchone()[0] or 0.0
+        except sqlite3.Error as e:
+            fehler.append(f"{db}: {e}")
+        finally:
+            conn.close()
+    return summe, ("DB nicht lesbar: " + "; ".join(fehler)) if fehler else None

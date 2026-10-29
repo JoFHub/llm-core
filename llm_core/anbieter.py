@@ -536,6 +536,7 @@ class Anthropic:
     Anthropic liefert je Key weder Verbrauch noch Limit (Verbrauch im Dashboard der Console).
     """
     anbieter = "anthropic"
+    ORGANISATION = "Organisation (Admin-API)"
 
     def __init__(self, admin_key: str | None = None, transport: Transport | None = None,
                  timeout: float = STANDARD_TIMEOUT, cache_ttl: float = STANDARD_CACHE_TTL,
@@ -581,7 +582,7 @@ class Anthropic:
         return api + (self._organisation() if self._admin_key else [])
 
     def _organisation(self) -> list[KeyStatus]:
-        name = "Organisation (Admin-API)"
+        name = self.ORGANISATION
         jetzt = self._jetzt()
         monatsanfang = jetzt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         try:

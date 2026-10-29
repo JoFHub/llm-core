@@ -103,6 +103,30 @@ def kurzstatus_zeilen(
     return zeilen
 
 
+def kurzstatus_anthropic_zeilen(
+    keys: "list[_anbieter.KeyStatus]",
+    heute: float | None,
+    monat: float | None,
+    monat_nr: int,
+) -> list[str]:
+    """Kurzstatus der Konsole für Anthropic (Seitenleiste): berechnete Kosten aus den Kosten-DBs, Kosten der
+    Organisation (Admin-API), Zahl der API-Keys. Ohne Ampel: Anthropic liefert je Key weder Verbrauch noch Limit."""
+    zeilen = [f"berechnet: {heute_monat_zeile(heute, monat, monat_nr)}"]
+    organisation = [s for s in keys if s.name == _anbieter.Anthropic.ORGANISATION]
+    api = [s for s in keys if s.name != _anbieter.Anthropic.ORGANISATION]
+    for s in organisation:
+        if s.fehler:
+            zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} Organisation: {s.fehler}")
+        else:
+            zeilen.append(f"Organisation: {heute_monat_zeile(s.heute, s.monat, monat_nr)}")
+    ohne_key = [s for s in api if s.fehler]
+    if ohne_key:
+        zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} {ohne_key[0].fehler} ({ohne_key[0].name})")
+    elif api:
+        zeilen.append(f"{len(api)} {'API-Key' if len(api) == 1 else 'API-Keys'}")
+    return zeilen
+
+
 def kosten_seitenleiste(
     key_env: str = "OPENROUTER_API_KEY",
     titel: str | None = "Kosten",
@@ -120,6 +144,15 @@ def kosten_seitenleiste(
     return zeilen
 
 
+MONATSNAMEN = ("Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August",
+               "September", "Oktober", "November", "Dezember")
+
+
+def heute_monat_zeile(heute: float | None, monat: float | None, monat_nr: int) -> str:
+    """'heute 0,45 $ · Oktober 2,74 $' (Seitenleiste der Apps und der Konsole)."""
+    return f"heute {betrag(heute)} · {MONATSNAMEN[monat_nr - 1]} {betrag(monat)}"
+
+
 def berechnet_zeilen(
     provider: str = "anthropic",
     tag: str | None = None,
@@ -134,9 +167,7 @@ def berechnet_zeilen(
     monat_beginn = tag_beginn.replace(day=1)
     heute = _cost_tracker.cost_since(tag_beginn, provider=provider, tag=tag)
     monat = _cost_tracker.cost_since(monat_beginn, provider=provider, tag=tag)
-    monatsname = ("Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August",
-                  "September", "Oktober", "November", "Dezember")[jetzt.month - 1]
-    return [f"heute {betrag(heute)} · {monatsname} {betrag(monat)}"]
+    return [heute_monat_zeile(heute, monat, jetzt.month)]
 
 
 def kosten_seitenleiste_berechnet(

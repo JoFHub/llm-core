@@ -26,5 +26,5 @@ where = ["."]
 include = ["llm_core*"]
 
 [tool.setuptools.package-data]
-# Theme der Konsole (Streamlit liest es neben app.py)
-"llm_core.konsole" = [".streamlit/config.toml"]
+# Theme der Konsole (Streamlit liest es neben app.py) und ihre Seiten (Skripte für st.navigation)
+"llm_core.konsole" = [".streamlit/config.toml", "seiten/*.py"]

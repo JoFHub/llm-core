@@ -117,6 +117,20 @@ def test_kurzstatus_ohne_konto_und_keys():
     assert "Zeitüberschreitung" in z
 
 
+def test_kurzstatus_anthropic_zeilen():
+    from llm_core.ui import AMPEL_ZEICHEN, kurzstatus_anthropic_zeilen
+    keys = [an.KeyStatus("anthropic", "ANTHROPIC_API_KEY_FABULA", kennung="sk-ant…ab12", limit_abfragbar=False),
+            an.KeyStatus("anthropic", an.Anthropic.ORGANISATION, heute=1.0, monat=12.5, limit_abfragbar=False)]
+    assert kurzstatus_anthropic_zeilen(keys, 0.45, 2.74, 10) == [
+        "berechnet: heute 0,45 $ · Oktober 2,74 $",
+        "Organisation: heute 1,00 $ · Oktober 12,50 $",
+        "1 API-Key",
+    ]
+    ohne = [an.KeyStatus("anthropic", "ANTHROPIC_API_KEY", limit_abfragbar=False, fehler="kein Key")]
+    assert kurzstatus_anthropic_zeilen(ohne, None, None, 1) == [
+        "berechnet: heute – · Januar –", f"{AMPEL_ZEICHEN[an.GRAU]} kein Key (ANTHROPIC_API_KEY)"]
+
+
 # -- Konsole: Start und lokale Details ---------------------------------------------
 
 def test_konsole_startbefehl_nur_localhost():
@@ -135,6 +149,30 @@ def test_details_lokal(tmp_path):
     assert {z["zuordnung"] for z in d["je_tag_zuordnung"]} == {"visibilia", "(ohne)"}
     nur = daten.details(db, tage=30, tag="visibilia")
     assert nur["summe"] == pytest.approx(0.5)
+    nur_or = daten.details(db, tage=30, provider="openrouter")
+    assert [m["modell"] for m in nur_or["je_modell"]] == ["google/gemini-2.5-flash"]
+    assert nur_or["summe"] == pytest.approx(0.5)
+
+
+def test_kosten_seit_mehrere_dbs_je_anbieter(tmp_path):
+    from datetime import datetime, timezone
+    dbs = []
+    for name, kosten in (("a", 1.0), ("b", 2.0)):
+        db = tmp_path / name / "costs.sqlite"
+        db.parent.mkdir()
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE llm_usage (timestamp TEXT, provider TEXT, cost_usd REAL)")
+        conn.executemany("INSERT INTO llm_usage VALUES (?, ?, ?)", [
+            ("2026-10-29T06:00:00+00:00", "anthropic", kosten),
+            ("2026-10-29T06:00:00+00:00", "openrouter", 10.0),
+            ("2026-09-30T06:00:00+00:00", "anthropic", 100.0)])
+        conn.commit()
+        conn.close()
+        dbs.append(db)
+    seit = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    assert daten.kosten_seit(dbs, seit, "anthropic") == (pytest.approx(3.0), None)
+    summe, fehler = daten.kosten_seit(dbs + [tmp_path / "fehlt" / "costs.sqlite"], seit, "anthropic")
+    assert summe == pytest.approx(3.0) and "DB nicht lesbar" in fehler
 
 
 def test_details_alt_db_ohne_tag_spalte(tmp_path):
@@ -191,3 +229,4 @@ def test_berechnet_zeilen_heute_und_monat(monkeypatch, tmp_path):
     assert ui.berechnet_zeilen("anthropic", tag="fabula", jetzt=jetzt) == [
         "heute 0,45 $ · Oktober 2,55 $"]
     assert cost_tracker.cost_since(datetime(2026, 10, 1, tzinfo=timezone.utc)) == 6.55
+
