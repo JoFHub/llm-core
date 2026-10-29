@@ -1,0 +1,12 @@
+# Nie ins Image: Keys, Git, lokale Daten und Caches
+.env
+.git
+server/.env
+**/__pycache__
+.pytest_cache
+*.egg-info
+tests
+.venv
+build
+dist
+docs

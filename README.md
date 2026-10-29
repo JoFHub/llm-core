@@ -255,20 +255,57 @@ Kosten zeigt jede App gleich, und nur so — maßgeblich sind die **Kosten je Ke
 python -m llm_core.konsole            # http://localhost:8510 (--port, LLM_CORE_KONSOLE_PORT)
 ```
 
+Zwei getrennte Seiten, je Anbieter eine (seit 2026-10-29: Memoria und Probatio nur über OpenRouter, Fabula nur
+direkt bei Anthropic). Jede Seite zeigt nur ihren Anbieter, auch in den lokalen Details.
+
+**OpenRouter** (Memoria, Probatio):
+
 - **Übersicht:** alle Keys mit Verbrauch heute/Monat/gesamt, Limit, Ampel; Guthaben; Warnung bei Keys ohne Limit.
-- **OpenRouter verwalten** (nur OpenRouter, nur mit Provisioning-Key): Limit ändern, Key deaktivieren/aktivieren, neuen Key anlegen. Jede
+- **Verwalten** (nur mit Provisioning-Key): Limit ändern, Key deaktivieren/aktivieren, neuen Key anlegen. Jede
   Änderung zeigt vorher/nachher und braucht eine Bestätigung. Der Klartext eines neuen Keys wird genau einmal
   angezeigt (sofort in die `.env` der App bzw. den Passwortmanager übernehmen) und nie gespeichert oder geloggt.
-- **Details lokal:** Kosten je Tag, Modell und `tag` aus einer wählbaren Kosten-DB (`~/.llm_core`, `~/.memoria`,
-  `LLM_CORE_DATA_DIR`, weitere über `LLM_CORE_KONSOLE_DBS`, getrennt mit `;` unter Windows bzw. `:` sonst).
-  Die DB wird nur lesend geöffnet.
+- **Details lokal:** Kosten je Tag, Modell und `tag` der OpenRouter-Aufrufe aus einer wählbaren Kosten-DB.
+
+**Anthropic** (Fabula):
+
+- **Übersicht:** berechnete Kosten heute und im laufenden Monat aus allen Kosten-DBs dieses Rechners, mit
+  `ANTHROPIC_ADMIN_KEY` zusätzlich die Kosten der Organisation; die API-Keys nur gekürzt. Kein Limit, keine Ampel:
+  die Ausgabengrenze steht in der Anthropic Console.
+- **Details lokal:** wie bei OpenRouter, nur die Anthropic-Aufrufe.
+
+Kosten-DBs: `~/.llm_core`, `~/.memoria`, `LLM_CORE_DATA_DIR`, weitere über `LLM_CORE_KONSOLE_DBS` (getrennt mit `;`
+unter Windows bzw. `:` sonst); sie werden nur lesend geöffnet.
 
 Stil und Bedienung wie Memoria (GUI-Standards in `memoria/CLAUDE.md`): Theme hell/dunkel in
 `llm_core/konsole/.streamlit/config.toml`, globales CSS und Knopfleiste unter dem Titel in
-`llm_core/konsole/_widgets.py` — „Hilfe“, „Aktualisieren“, „Optionen“ (Ampel-Schwelle, Tage, Zuordnung, weitere DB), dazu Links zu den Dashboards von OpenRouter und Anthropic. In der Seitenleiste ein Kurzstatus (`ui.kurzstatus_zeilen`): Rest-Guthaben, Ampel je Key gezählt, Keys ohne Limit, Verbrauch heute/Monat.
+`llm_core/konsole/_widgets.py`, Seiten in `llm_core/konsole/seiten/`. Knopfleiste je Seite: „Hilfe“,
+„Aktualisieren“, „Optionen“ (je Seite eigene: Ampel-Schwelle nur bei OpenRouter; Tage, Zuordnung, weitere DB),
+„Dashboard“ des Anbieters. In der Seitenleiste unter der Navigation ein Kurzstatus je Anbieter
+(`ui.kurzstatus_zeilen`, `ui.kurzstatus_anthropic_zeilen`).
 
 Die Konsole hört nur auf `localhost` und hat keine eigene Anmeldung. Für einen Server-Betrieb (`--adresse`) gehört
 sie hinter eine vorhandene Anmeldung.
+
+### Konsole auf dem Server
+
+Die Konsole läuft auf dem Probatio-Server (seit 2026-10-29), damit die Kosten immer erreichbar sind: OpenRouter
+(Memoria, Probatio) kommt ohnehin über die Keys beim Anbieter, und Fabula — die einzige App direkt bei Anthropic —
+läuft nur dort, ihre Kosten-DB liegt also auf demselben Rechner.
+
+- Eigener Stack in `~/llm-core/server/` (Projekt `llm-core`, Container `kosten:8510`, kein Port nach außen) im Netz
+  `probatio`; HTTPS und Anmeldung macht Caddy aus dem Probatio-Stack
+  (`{$KOSTEN_HOST} { import geschuetzt kosten kosten:8510 }`), Benutzer `kosten` (`bash passwort.sh kosten` in
+  `~/probatio/server`).
+- Kosten-DBs nur lesend eingebunden: Fabula (`~/fabula/server/daten/llm_core`) und die Probatio-Instanzen
+  `ta`, `visibilia` (`~/probatio/server/daten/<kunde>/probatio/llm_core`).
+- Keys in `server/.env` (Vorlage `server/env.example`): `KOSTEN_HOST`, `OPENROUTER_PROVISIONING_KEY`, optional
+  `ANTHROPIC_ADMIN_KEY`. Das Image enthält keine Keys (`.dockerignore`).
+- Aktualisieren: `ssh probatio-server`, `bash llm-core/server/aktualisieren.sh` (holt `main`, baut, startet neu,
+  prüft Gesundheit und Anmeldeseite).
+
+Einrichten (einmal): `git clone https://github.com/JoFHub/llm-core.git ~/llm-core`, `server/.env` aus
+`env.example` anlegen, `KOSTEN_HOST` auch in `~/probatio/server/.env` eintragen, Caddy im Probatio-Stack neu
+starten, Passwort setzen, `bash ~/llm-core/server/aktualisieren.sh --immer`.
 
 ### Einrichtung
 
