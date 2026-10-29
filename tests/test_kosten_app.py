@@ -309,7 +309,7 @@ def test_neuer_key_klartext_genau_einmal():
 
 @pytest.mark.parametrize("name, limit, meldung", [
     ("", "5", "Namen"), ("x" * 61, "5", "zu lang"), ("<script>", "5", "Erlaubt"),
-    ("ok", "-1", "0 oder größer"), ("ok", "1000,01", "Höchstens"), ("ok", "abc", "keine Zahl"), ("ok", "", "Limit"),
+    ("ok", "-1", "0 oder größer"), ("ok", "100,01", "Höchstens"), ("ok", "abc", "keine Zahl"), ("ok", "", "Limit"),
 ])
 def test_neuer_key_eingaben_geprueft(name, limit, meldung):
     t = FakeTransport(_antworten())
@@ -323,7 +323,9 @@ def test_neuer_key_eingaben_geprueft(name, limit, meldung):
 def test_eingaben():
     assert logik.lies_limit("12,50") == 12.5
     assert logik.lies_limit(" 12.5 € ") == 12.5
-    assert logik.lies_limit("1.000") == 1000.0
+    assert logik.lies_limit("100") == 100.0              # Obergrenze (Nutzer, 2026-10-29)
+    with pytest.raises(logik.Eingabefehler, match="Höchstens"):
+        logik.lies_limit("1.000")
     assert logik.lies_limit("0") == 0.0
     for falsch in ("nan", "inf", "1e9", "-0,5"):
         with pytest.raises(logik.Eingabefehler):
@@ -508,3 +510,21 @@ def test_llm_core_ohne_web_framework():
             " llm_core.kosten_app.kurs, llm_core.kosten_app.daten;"
             "sys.exit(1 if {'starlette', 'jinja2', 'uvicorn', 'streamlit'} & set(sys.modules) else 0)")
     assert subprocess.run([sys.executable, "-c", code]).returncode == 0
+
+
+def test_seiten_fragen_anbieter_im_thread_pool_ab():
+    """Anbieter antworten blockierend (Timeout bis 10 s): nicht im Event-Loop, sonst stünde auch /gesund."""
+    import threading
+    threads = []
+
+    def openrouter():
+        threads.append(threading.current_thread())
+        return an.OpenRouter(api_keys={}, provisioning="", transport=lambda *a: (200, {"data": {}}))
+
+    app = erstelle_app(openrouter=openrouter, kurs_quelle=KursQuelle(abrufen=lambda: KURS), dbs=lambda: [],
+                       jetzt=lambda: JETZT)
+    with TestClient(app) as c:
+        for pfad in ("/", "/info", "/neu"):
+            assert c.get(pfad).status_code == 200
+    assert len(threads) == 3 and all(t is not threading.main_thread() for t in threads)
+    assert all(t.name.startswith("AnyIO worker") for t in threads)

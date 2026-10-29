@@ -9,6 +9,8 @@ Sicherheit:
   Keys, genau einmal in der Antwort auf die Bestätigung (nie gespeichert, Cache-Control: no-store).
 - Ändernde Aktionen nur per POST mit CSRF-Token (HMAC der Sitzung, Sitzungs-Cookie SameSite=Strict), dazu
   Prüfung von Origin bzw. Sec-Fetch-Site.
+- Anbieter, Kurs und Kosten-DBs werden blockierend abgefragt (Timeout bis 10 s): die Seiten laufen deshalb im
+  Thread-Pool, damit eine langsame Antwort weder andere Anfragen noch /gesund aufhält.
 - Jede Änderung in zwei Schritten: der erste POST legt nur einen Plan an (serverseitig, an die Sitzung gebunden,
   10 Minuten gültig, einmal verwendbar); erst POST /bestaetigen ruft den Anbieter mit bestaetigt=True auf.
 """
@@ -28,6 +30,7 @@ from urllib.parse import urlsplit
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -203,7 +206,7 @@ def erstelle_app(
 
     # -- Seiten ------------------------------------------------------------
 
-    async def uebersicht(request: Request) -> Response:
+    def _uebersicht(request: Request) -> Response:
         o = neuer_openrouter()
         konto, keys = o.konto(), o.keys()
         kurs = kurs_jetzt()
@@ -219,7 +222,7 @@ def erstelle_app(
         kurse.leeren()
         return RedirectResponse("/", status_code=303)
 
-    async def key_ansehen(request: Request) -> Response:
+    def _key_ansehen(request: Request) -> Response:
         o = neuer_openrouter()
         kurs = kurs_jetzt()
         status = finde_key(o, request.path_params["schluessel"])
@@ -227,10 +230,7 @@ def erstelle_app(
             return nicht_gefunden(request, kurs)
         return key_seite(request, o, status, kurs)
 
-    async def key_limit(request: Request) -> Response:
-        werte = await formular(request)
-        if werte is None:
-            return abgewiesen(request)
+    def _key_limit(request: Request, werte: dict[str, str]) -> Response:
         o = neuer_openrouter()
         kurs = kurs_jetzt()
         status = finde_key(o, request.path_params["schluessel"])
@@ -249,9 +249,7 @@ def erstelle_app(
         return plan_seite(request, logik.plan_limit(status, limit, reset, kurs), kurs,
                           f"/key/{logik.schluessel(status)}")
 
-    async def key_sperren(request: Request) -> Response:
-        if await formular(request) is None:
-            return abgewiesen(request)
+    def _key_sperren(request: Request, werte: dict[str, str]) -> Response:
         o = neuer_openrouter()
         kurs = kurs_jetzt()
         status = finde_key(o, request.path_params["schluessel"])
@@ -266,13 +264,10 @@ def erstelle_app(
         return html(request, "neu.html", basis(kurs, verwaltung=o.hat_provisioning, fehler=fehler,
                                                eingabe=eingabe or {}), status=http)
 
-    async def neu_formular(request: Request) -> Response:
+    def _neu_formular(request: Request) -> Response:
         return neu_seite(request, neuer_openrouter(), kurs_jetzt())
 
-    async def neu_planen(request: Request) -> Response:
-        werte = await formular(request)
-        if werte is None:
-            return abgewiesen(request)
+    def _neu_planen(request: Request, werte: dict[str, str]) -> Response:
         o = neuer_openrouter()
         kurs = kurs_jetzt()
         if not o.hat_provisioning:
@@ -287,10 +282,7 @@ def erstelle_app(
             return neu_seite(request, o, kurs, fehler=str(e), eingabe=werte, http=400)
         return plan_seite(request, logik.plan_anlegen(name, limit, reset, kurs), kurs, "/neu")
 
-    async def bestaetigen(request: Request) -> Response:
-        werte = await formular(request)
-        if werte is None:
-            return abgewiesen(request)
+    def _bestaetigen(request: Request, werte: dict[str, str]) -> Response:
         kurs = kurs_jetzt()
         plan = plaene.nehmen(werte.get("plan", ""), request.state.sitzung)
         if plan is None:
@@ -309,12 +301,32 @@ def erstelle_app(
                                                          nachher=erg.nachher))
         return RedirectResponse(f"/key/{plan.key_id}?meldung={plan.aktion}", status_code=303)
 
-    async def info(request: Request) -> Response:
+    def _info(request: Request) -> Response:
         o = neuer_openrouter()
         kurs = kurs_jetzt()
         return html(request, "info.html", basis(
             kurs, verwaltung=o.hat_provisioning, schwellen=an.Schwellen.from_env(), stand=uhr(),
             dbs=len(finde_dbs()), konsolen=(logik.OPENROUTER_KONSOLE, logik.ANTHROPIC_KONSOLE)))
+
+    # -- Hüllen: Formular async lesen und prüfen, alles Blockierende im Thread-Pool ------------------------
+
+    def seite(funktion: Callable[[Request], Response]):
+        async def huelle(request: Request) -> Response:
+            return await run_in_threadpool(funktion, request)
+        return huelle
+
+    def aktion(funktion: Callable[[Request, dict[str, str]], Response]):
+        async def huelle(request: Request) -> Response:
+            werte = await formular(request)
+            if werte is None:
+                return abgewiesen(request)
+            return await run_in_threadpool(funktion, request, werte)
+        return huelle
+
+    uebersicht, key_ansehen, neu_formular, info = (seite(f) for f in (_uebersicht, _key_ansehen, _neu_formular,
+                                                                        _info))
+    key_limit, key_sperren, neu_planen, bestaetigen = (aktion(f) for f in (_key_limit, _key_sperren, _neu_planen,
+                                                                            _bestaetigen))
 
     async def gesund(request: Request) -> Response:
         return JSONResponse({"status": "ok", "version": VERSION})

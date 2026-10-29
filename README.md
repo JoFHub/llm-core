@@ -267,7 +267,7 @@ python -m llm_core.kosten_app          # http://localhost:8510 (--port, --adress
   nur bei Problemen: Key ohne Limit, Limit erreicht (rot), fast erreicht (orange, `LLM_CORE_AMPEL_GELB`), Anbieter
   nicht erreichbar, kein Kurs (grau). ⟳ leert den Zwischenspeicher. Links zu den Konsolen der Anbieter.
 - **Key** (Antippen): Kennung gekürzt, Status, heute/Monat/gesamt, Limit mit Zurücksetzen; mit Provisioning-Key
-  **Limit ändern** (Eingabe in €, höchstens 1000 €), **sperren/entsperren**, über **+** einen **neuen Key**
+  **Limit ändern** (Eingabe in €, höchstens 100 €), **sperren/entsperren**, über **+** einen **neuen Key**
   anlegen. Jede Änderung zeigt vorher → nachher und läuft erst nach der Bestätigung. Der Klartext eines neuen Keys
   erscheint genau einmal (mit „Kopieren“) und wird nie gespeichert oder geloggt.
 - **Euro:** EZB-Referenzkurs über frankfurter.dev, höchstens zweimal am Tag abgefragt, im Prozess

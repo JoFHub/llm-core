@@ -17,7 +17,7 @@ from llm_core.ui import MONATSNAMEN, betrag
 OPENROUTER_KONSOLE = "https://openrouter.ai/activity"
 ANTHROPIC_KONSOLE = "https://platform.claude.com/usage"
 
-LIMIT_MAX_EUR = 1000.0
+LIMIT_MAX_EUR = 100.0      # Obergrenze je Limit (Nutzer, 2026-10-29)
 NAME_MAX = 60
 NAME_MUSTER = re.compile(r"^[A-Za-z0-9ÄÖÜäöüß][A-Za-z0-9ÄÖÜäöüß _.\-]*$")
 
