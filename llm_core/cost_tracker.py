@@ -281,6 +281,25 @@ def total_cost(days: int = 30, tag: str | None = None) -> float:
         return 0.0
 
 
+def cost_since(since: datetime, provider: str | None = None, tag: str | None = None) -> float:
+    """Kosten in USD seit einem Zeitpunkt (mit Zeitzone), optional nur ein Provider
+    bzw. eine Zuordnung -- für "heute"/"Monat" in ui.kosten_seitenleiste_berechnet."""
+    where, args = ["timestamp >= ?"], [since.astimezone(timezone.utc).isoformat()]
+    if provider is not None:
+        where.append("provider = ?"); args.append(provider)
+    if tag is not None:
+        where.append("tag = ?"); args.append(tag)
+    try:
+        conn = _connect()
+        row = conn.execute(
+            f"SELECT COALESCE(SUM(cost_usd), 0) FROM llm_usage WHERE {' AND '.join(where)}", args
+        ).fetchone()
+        conn.close()
+        return float(row[0]) if row else 0.0
+    except Exception:
+        return 0.0
+
+
 def pricing_table() -> dict[str, tuple[float, float]]:
     return dict(_PRICING)
 

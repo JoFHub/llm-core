@@ -215,19 +215,38 @@ die Kosten je Key, wie der Anbieter sie abrechnet (über alle Rechner); ohne Key
 (`kein Key (…)` bzw. die Fehlermeldung), keine Schätzung aus der Kosten-DB. Der Key bleibt im
 Server-Prozess; ins HTML kommt nur der Text. `kosten_zeilen(...)` liefert dieselben Zeilen ohne Streamlit.
 
+**Apps direkt bei Anthropic** (Fabula seit 2026-10-29): Anthropic liefert je Key weder Verbrauch noch Limit. Dafür
+der Baustein mit berechneten Kosten aus der Kosten-DB dieses Rechners (Token-Zahlen von Anthropic mal Preisliste in
+`cost_tracker._PRICING` -- genau, solange die Preisliste stimmt):
+
+```python
+from llm_core.ui import kosten_seitenleiste_berechnet
+
+kosten_seitenleiste_berechnet(provider="anthropic", titel="Kosten Fabula", tag="fabula")
+# heute 0,45 $ · Oktober 2,74 $
+# berechnet, Anthropic
+```
+
+`berechnet_zeilen(...)` liefert dieselben Zeilen ohne Streamlit. Kein Limit, keine Ampel: die Obergrenze setzt man
+in der Anthropic Console.
+
 #### Regel für alle Apps (Probatio, Memoria, Fabula)
 
-Kosten zeigt jede App gleich, und nur so — maßgeblich sind die **Kosten je Key** beim Anbieter, keine Schätzung:
+Kosten zeigt jede App gleich, und nur so — maßgeblich sind die **Kosten je Key** beim Anbieter, keine Schätzung
+(Ausnahme: Apps direkt bei Anthropic, s. oben):
 
 1. **Ein OpenRouter-Key je App bzw. Kundenprofil, immer mit Limit** (`OPENROUTER_API_KEY_<APP|PROFIL>`, angelegt
-   und begrenzt in der Konsole). Ohne eigenen Key gilt der allgemeine Key der App.
+   und begrenzt in der Konsole). Ohne eigenen Key gilt der allgemeine Key der App. Eine App direkt bei Anthropic
+   (Fabula) hat stattdessen eine Ausgabengrenze in der Anthropic Console.
 2. **In der App nur der Baustein**: einmal unten in der Seitenleiste
-   `kosten_seitenleiste(key_env=<Key der App bzw. des Profils>, titel="Kosten <Name>")`.
+   `kosten_seitenleiste(key_env=<Key der App bzw. des Profils>, titel="Kosten <Name>")`, bei Anthropic
+   `kosten_seitenleiste_berechnet(provider="anthropic", titel="Kosten <Name>", tag=<tag>)`.
    Keine eigene Kostenseite, keine eigene Abfrage beim Anbieter, keine eigenen Betragsformate. Der Baustein zeigt
    nur den eigenen Key — ein Kunde sieht in einer Vorführung keine anderen Kunden.
 3. **Kosten-DB nur für Einzelheiten**: jeder Aufruf mit `tag` (App bzw. Kundenprofil, `cost_tracker.set_tag_source`)
    in eine eigene Kosten-DB je App (`LLM_CORE_DATA_DIR`; auf dem Server im Datenordner). Sie zeigt in der Konsole,
-   welches Modell und welcher Teil der App die Kosten verursacht — in der App erscheint sie nicht.
+   welches Modell und welcher Teil der App die Kosten verursacht — in der App erscheint sie nur über
+   `kosten_seitenleiste_berechnet` (Anthropic).
 4. **Einzelheiten und Verwaltung nur in der Konsole** (`python -m llm_core.konsole`, auf dem Omen über Porta):
    Verbrauch aller Keys, Kosten je Tag, Modell und `tag`, Limits ändern, Keys anlegen oder sperren.
 

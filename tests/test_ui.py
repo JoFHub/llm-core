@@ -165,3 +165,29 @@ def test_db_kandidaten(tmp_path, monkeypatch):
     monkeypatch.setenv("LLM_CORE_KONSOLE_DBS", f"{memoria}{__import__('os').pathsep}{tmp_path / 'leer'}")
     cost_tracker.record("p", "m", 0, 0)   # legt costs.sqlite in LLM_CORE_DATA_DIR (= tmp_path) an
     assert daten.db_kandidaten() == [(memoria / "costs.sqlite").resolve(), (tmp_path / "costs.sqlite").resolve()]
+
+
+def test_berechnet_zeilen_heute_und_monat(monkeypatch, tmp_path):
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    from llm_core import cost_tracker, ui
+
+    monkeypatch.setenv("LLM_CORE_DATA_DIR", str(tmp_path))
+    conn = cost_tracker._connect()
+    zeilen = [  # (Zeitpunkt UTC, Provider, Kosten, Zuordnung)
+        ("2026-10-29T06:00:00+00:00", "anthropic", 0.45, "fabula"),   # heute (07:00 in Berlin)
+        ("2026-10-28T22:30:00+00:00", "anthropic", 0.10, "fabula"),   # 23:30 in Berlin: gestern, obwohl erst 22:30 UTC
+        ("2026-10-02T10:00:00+00:00", "anthropic", 2.00, "fabula"),   # diesen Monat
+        ("2026-09-30T10:00:00+00:00", "anthropic", 5.00, "fabula"),   # Vormonat
+        ("2026-10-29T06:00:00+00:00", "openrouter", 1.00, "fabula"),  # anderer Anbieter
+        ("2026-10-29T06:00:00+00:00", "anthropic", 3.00, "probatio"),  # andere App
+    ]
+    for ts, provider, kosten, tag in zeilen:
+        conn.execute("INSERT INTO llm_usage (timestamp, provider, model, cost_usd, tag) VALUES (?, ?, 'm', ?, ?)",
+                     (ts, provider, kosten, tag))
+    conn.commit(); conn.close()
+
+    jetzt = datetime(2026, 10, 29, 8, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+    assert ui.berechnet_zeilen("anthropic", tag="fabula", jetzt=jetzt) == [
+        "heute 0,45 $ · Oktober 2,55 $", "berechnet, Anthropic"]
+    assert cost_tracker.cost_since(datetime(2026, 10, 1, tzinfo=timezone.utc)) == 6.55
