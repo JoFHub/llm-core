@@ -297,7 +297,7 @@ URLs oder Logs (nur gekürzt). Ändernde Aktionen nur per POST mit CSRF-Token (a
 
 ### Kosten-App auf dem Server
 
-Die App läuft auf dem Probatio-Server, damit die Kosten immer erreichbar sind: OpenRouter (Memoria, Probatio)
+Die App läuft auf dem Server `jof-server` (IONOS, neben Probatio und Fabula), damit die Kosten immer erreichbar sind: OpenRouter (Memoria, Probatio)
 kommt ohnehin über die Keys beim Anbieter, und Fabula — die einzige App direkt bei Anthropic — läuft nur dort,
 ihre Kosten-DB liegt also auf demselben Rechner.
 
@@ -309,7 +309,7 @@ ihre Kosten-DB liegt also auf demselben Rechner.
   `ta`, `visibilia` (`~/probatio/server/daten/<kunde>/probatio/llm_core`), Variable `LLM_CORE_KOSTEN_DBS`.
 - Keys in `server/.env` (Vorlage `server/env.example`): `KOSTEN_HOST`, `OPENROUTER_PROVISIONING_KEY`, optional
   `LLM_CORE_EUR_KURS`. Das Image enthält keine Keys (`.dockerignore`).
-- Aktualisieren: `ssh probatio-server`, `bash llm-core/server/aktualisieren.sh` (holt `main`, baut, startet neu,
+- Aktualisieren: `ssh jof-server`, `bash llm-core/server/aktualisieren.sh` (holt `main`, baut, startet neu,
   prüft Gesundheit über `/gesund` und die Anmeldeseite).
 
 Einrichten (einmal): `git clone https://github.com/JoFHub/llm-core.git ~/llm-core`, `server/.env` aus
