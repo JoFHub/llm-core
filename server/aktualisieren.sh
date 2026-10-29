@@ -41,7 +41,12 @@ fehler=0
 
 # Von außen: ohne Anmeldung muss die Anmeldeseite kommen (302)
 host=$(grep -E '^KOSTEN_HOST=' .env | cut -d= -f2)
-code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "https://$host/" || true)
+# Direkt nach dem Neustart antwortet die Adresse kurz nicht (000): bis zu 5 Versuche
+for _ in $(seq 1 5); do
+    code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "https://$host/" || true)
+    [[ $code == 302 ]] && break
+    sleep 3
+done
 echo "https://$host/ → $code"
 [[ $code == 302 ]] || fehler=1
 
