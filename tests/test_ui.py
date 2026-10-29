@@ -91,44 +91,41 @@ def test_seitenleiste_ohne_streamlit_klare_meldung(monkeypatch):
         kosten_seitenleiste("OPENROUTER_API_KEY_TEST")
 
 
-def test_kurzstatus_zeilen():
-    from llm_core.ui import AMPEL_ZEICHEN, kurzstatus_zeilen
+def test_betrag_in_euro():
+    from llm_core.ui import betrag
+    assert betrag(1234.5) == "1.234,50 $" and betrag(0.004, "€") == "0,004 €" and betrag(None, "€") == "–"
+
+
+def test_kurzstatus_werte_und_hinweise():
+    from llm_core.ui import AMPEL_ZEICHEN, kurzstatus_hinweise, kurzstatus_werte
     konto = an.KontoStatus("openrouter", guthaben=30.0, verbraucht=13.7)
     keys = [
         an.KeyStatus("openrouter", "ta", kennung="sk-or-v1-…1111", limit=10.0, rest=9.9, heute=0.1, monat=0.1),
         an.KeyStatus("openrouter", "memoria", kennung="sk-or-v1-…2222", limit=None, heute=0.5, monat=3.5),
-        an.KeyStatus("anthropic", "ANTHROPIC_API_KEY", kennung="…3333", limit_abfragbar=False),
+        an.KeyStatus("openrouter", "fabula", limit=10.0, verbrauch_gesamt=9.0, rest=1.0),
+        an.KeyStatus("openrouter", "alt", fehler="Zeitüberschreitung"),
     ]
-    zeilen = kurzstatus_zeilen(konto, keys)
-    rot, gruen, grau = (AMPEL_ZEICHEN[a] for a in (an.ROT, an.GRUEN, an.GRAU))
-    assert zeilen == [
-        "Rest OpenRouter: **16,30 $**",
-        f"3 Keys: {rot} 1 · {gruen} 1 · {grau} 1",
-        f"{rot} ohne Limit: memoria",
-        "heute 0,60 $ · Monat 3,60 $",
-    ]
-    assert not any("1111" in z or "2222" in z for z in zeilen)   # Keys nur mit Namen
+    assert kurzstatus_werte(konto, keys) == [("heute", pytest.approx(0.6)), ("Monat", pytest.approx(3.6)),
+                                             ("Rest", pytest.approx(16.3))]
+    rot, gelb, grau = (AMPEL_ZEICHEN[a] for a in (an.ROT, an.GELB, an.GRAU))
+    hinweise = kurzstatus_hinweise(konto, keys)
+    assert hinweise == [f"{rot} ohne Limit: memoria", f"{gelb} fast am Limit: fabula", f"{grau} Fehler: alt"]
+    assert not any("1111" in z or "2222" in z for z in hinweise)   # Keys nur mit Namen
 
 
 def test_kurzstatus_ohne_konto_und_keys():
-    from llm_core.ui import kurzstatus_zeilen
-    assert kurzstatus_zeilen(None, []) == []
-    [z] = kurzstatus_zeilen(an.KontoStatus("openrouter", fehler="Zeitüberschreitung"), [])
+    from llm_core.ui import kurzstatus_hinweise, kurzstatus_werte
+    assert kurzstatus_werte(None, []) == [("heute", None), ("Monat", None)]   # ohne Provisioning-Key kein Rest
+    assert kurzstatus_hinweise(None, []) == []                                # alles gut: keine Zeile
+    [z] = kurzstatus_hinweise(an.KontoStatus("openrouter", fehler="Zeitüberschreitung"), [])
     assert "Zeitüberschreitung" in z
 
 
-def test_kurzstatus_anthropic_zeilen():
-    from llm_core.ui import kurzstatus_anthropic_zeilen
-    keys = [an.KeyStatus("anthropic", "ANTHROPIC_API_KEY_FABULA", kennung="sk-ant…ab12", limit_abfragbar=False),
-            an.KeyStatus("anthropic", an.Anthropic.ORGANISATION, heute=1.0, monat=12.5, limit_abfragbar=False)]
-    assert kurzstatus_anthropic_zeilen(keys, 0.45, 2.74, 10) == [
-        "berechnet: heute 0,45 $ · Oktober 2,74 $",
-        "Organisation: heute 1,00 $ · Oktober 12,50 $",
-        "1 API-Key",
-    ]
-    ohne = [an.KeyStatus("anthropic", "ANTHROPIC_API_KEY", limit_abfragbar=False, fehler="kein Key")]
-    assert kurzstatus_anthropic_zeilen(ohne, None, None, 1) == [
-        "berechnet: heute – · Januar –"]   # ohne API-Key kein Hinweis (Server)
+def test_kurz_html_mit_euro():
+    from llm_core.konsole import _gemeinsam as g
+    html = g.kurz_html([("heute", 0.5), ("Rest", None)], 0.9)
+    assert "0,50 &#36;" in html and "≈ 0,45 €" in html and "$" not in html
+    assert "≈" not in g.kurz_html([("heute", 0.5)], None)   # ohne Kurs keine €-Spalte
 
 
 # -- Konsole: Start und lokale Details ---------------------------------------------

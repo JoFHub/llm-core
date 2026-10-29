@@ -8,6 +8,8 @@ gatherUsageStats = false
 [client]
 # Keine Google-/ChatGPT-Links in Fehleranzeigen — der Fehlertext kann Key-Kennungen enthalten.
 showErrorLinks = false
+# Kein „Deploy“-Knopf oben rechts (braucht Platz auf dem iPhone, gilt nur für Streamlit Cloud)
+toolbarMode = "minimal"
 
 # Hell und Dunkel als eigene Varianten — Umschalten im App-Menü (⋮ → Settings).
 [theme]

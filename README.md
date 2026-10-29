@@ -280,8 +280,10 @@ Stil und Bedienung wie Memoria (GUI-Standards in `memoria/CLAUDE.md`): Theme hel
 `llm_core/konsole/.streamlit/config.toml`, globales CSS und Knopfleiste unter dem Titel in
 `llm_core/konsole/_widgets.py`, Seiten in `llm_core/konsole/seiten/`. Knopfleiste je Seite: „Hilfe“,
 „Aktualisieren“, „Optionen“ (je Seite eigene: Ampel-Schwelle nur bei OpenRouter; Tage, Zuordnung, weitere DB),
-„Dashboard“ des Anbieters. In der Seitenleiste unter der Navigation ein Kurzstatus je Anbieter
-(`ui.kurzstatus_zeilen`, `ui.kurzstatus_anthropic_zeilen`).
+„Dashboard“ des Anbieters. In der Seitenleiste je Anbieter ein Menüpunkt, darunter heute, Monat und (OpenRouter)
+Rest in $ und ungefähr in € (EZB-Kurs über frankfurter.dev, einmal am Tag; fester Kurs mit `LLM_CORE_EUR_KURS`);
+Hinweise nur, wenn etwas nicht stimmt (`ui.kurzstatus_werte`, `ui.kurzstatus_hinweise`). Auf dem iPhone ist die
+Seitenleiste anfangs zu.
 
 Die Konsole hört nur auf `localhost` und hat keine eigene Anmeldung. Für einen Server-Betrieb (`--adresse`) gehört
 sie hinter eine vorhandene Anmeldung.

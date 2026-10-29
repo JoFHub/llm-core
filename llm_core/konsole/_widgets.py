@@ -60,7 +60,28 @@ div[data-testid="stDialog"] [data-testid="stCaptionContainer"] { margin-bottom: 
 div[data-testid="stDialog"] h2 { font-size: 1rem !important; font-weight: 500 !important; }
 div[data-testid="stDialog"] { padding: 1rem !important; }
 [data-testid="stMain"] .stButton button { border-width: 1px !important; }
-/* Seitenleiste (Kurzstatus): schmal und kompakt wie Memoria, Text 0.88rem */
+/* Seitenleiste: je Anbieter ein Menüpunkt, darunter heute/Monat/Rest als Raster (Name · $ · ≈ €) */
+.lc-kurz { display: grid; grid-template-columns: auto 1fr auto; column-gap: 0.75rem; row-gap: 0.05rem;
+    padding: 0 0.5rem 0 2.35rem; font-size: 0.88rem; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.lc-kurz .lc-usd { text-align: right; }
+.lc-kurz .lc-eur { text-align: right; color: var(--lc-muted); }
+/* Gruppe je Anbieter (Container kurz_<anbieter>): Linie darunter */
+:is(section, main, aside, nav, div)[data-testid="stSidebar"] [class*="st-key-kurz_"] {
+    gap: 0.15rem !important; padding-bottom: 0.7rem !important; margin-bottom: 0.45rem !important;
+    border-bottom: 1px solid rgba(128,128,128,0.25) !important; }
+/* Markdown hat margin-bottom -1rem: das Raster liefe sonst in die nächste Gruppe */
+:is(section, main, aside, nav, div)[data-testid="stSidebar"] [class*="st-key-kurz_"] [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
+/* Hinweise (nur bei Problemen) eingerückt wie das Raster */
+:is(section, main, aside, nav, div)[data-testid="stSidebar"] [class*="st-key-kurz_"] [data-testid="stMarkdown"] p { padding-left: 2.35rem; font-size: 0.82rem !important; }
+/* Menüpunkt: etwas kräftiger als die Zahlen */
+:is(section, main, aside, nav, div)[data-testid="stSidebar"] [data-testid="stPageLink"] p { font-size: 0.95rem !important; font-weight: 600; }
+/* iPhone/schmale Fenster: weniger Rand oben, kleinerer Titel, Eingaben 16 px (Safari zoomt sonst beim Antippen) */
+@media (max-width: 640px) {
+    [data-testid="stMainBlockContainer"] { padding-top: 3rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
+    [data-testid="stHeading"] h1 { font-size: 1.75rem !important; padding: 0.25rem 0 0.5rem 0 !important; }
+    input, textarea { font-size: 16px !important; }
+}
+/* Seitenleiste: schmal und kompakt wie Memoria, Text 0.88rem */
 :is(section, main, aside, nav, div)[data-testid="stSidebar"] { min-width: 248px !important; max-width: 248px !important; width: 248px !important; }
 [data-testid="stSidebarHeader"] { padding: 0.6rem 1rem 0.2rem !important; }
 [data-testid="stSidebarUserContent"] { padding-top: 0.15rem !important; padding-bottom: 0.75rem !important; }

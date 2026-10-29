@@ -12,6 +12,7 @@ pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
 from llm_core import anbieter as an  # noqa: E402
+from llm_core.konsole import _gemeinsam as g  # noqa: E402
 from llm_core.konsole import daten  # noqa: E402
 from llm_core.ui import MONATSNAMEN  # noqa: E402
 
@@ -25,6 +26,8 @@ def at(monkeypatch):
             monkeypatch.delenv(name)
     monkeypatch.setattr(an, "_aus_keyring", lambda name: None)
     monkeypatch.setattr(daten, "db_kandidaten", lambda: [])
+    monkeypatch.setattr(g, "_kurs_abfragen", lambda: 0.9)   # kein Netz für den €-Kurs
+    g.eur_kurs.clear()
     an.cache_leeren()
     app = AppTest.from_file(APP, default_timeout=30)
     app.run()
@@ -61,10 +64,14 @@ def test_openrouter_ist_startseite(at):
     assert "Memoria, Probatio" in _hilfe(at)
 
 
-def test_seitenleiste_zeigt_beide_anbieter_getrennt(at):
+def test_seitenleiste_menue_je_anbieter_mit_zahlen(at):
+    assert [p.proto.label for p in at.sidebar.get("page_link")] == ["OpenRouter", "Anthropic"]
     sidebar = _sidebar(at)
-    assert "**OpenRouter** · Memoria, Probatio" in sidebar
-    assert "**Anthropic** · Fabula" in sidebar and "kein Key" not in sidebar   # ohne API-Key kein Hinweis
+    assert sidebar.count('class="lc-kurz"') == 2 and "lc-eur" in sidebar
+    assert ">heute<" in sidebar and ">Monat<" in sidebar
+    # ohne Namen der Apps, ohne „berechnet“, ohne Hinweis auf fehlende Anthropic-Keys
+    assert not any(w in sidebar for w in ("Memoria", "Fabula", "berechnet", "kein Key"))
+    assert "≈ 0,90 € (EZB)" in " ".join(c.value for c in at.sidebar.caption)
 
 
 def test_anthropic_seite(anthropic):

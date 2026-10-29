@@ -5,7 +5,11 @@ app.py legt sie an und hält sie beim Seitenwechsel fest.
 """
 from __future__ import annotations
 
+import json
+import os
+import urllib.request
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -37,6 +41,10 @@ OPTIONEN = {
 # primaryColor je Variante, wie in .streamlit/config.toml
 THEME_FARBE = {"light": "#3d5166", "dark": "#8aa4bf"}
 
+# Umrechnung in € (ungefähr): Referenzkurs der EZB über frankfurter.dev (ohne Key), einmal am Tag;
+# LLM_CORE_EUR_KURS setzt einen festen Kurs, ohne Kurs entfällt die €-Spalte
+EUR_URL = "https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR"
+
 HILFE_KEYS = ("Keys kommen aus der `.env` im Ordner von llm-core oder aus der "
               "Windows-Anmeldeinformationsverwaltung (Dienst `llm-core`).")
 
@@ -59,6 +67,37 @@ def theme_farbe() -> str:
     except Exception:
         dunkel = False
     return THEME_FARBE["dark" if dunkel else "light"]
+
+
+def _kurs_abfragen() -> float | None:
+    try:
+        with urllib.request.urlopen(EUR_URL, timeout=5) as antwort:
+            return float(json.load(antwort)["rates"]["EUR"])
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=12 * 3600, show_spinner=False)
+def eur_kurs() -> float | None:
+    """Euro je Dollar, ungefähr; None, wenn kein Kurs zu bekommen ist."""
+    fest = os.environ.get("LLM_CORE_EUR_KURS", "").strip().replace(",", ".")
+    if fest:
+        try:
+            return float(fest)
+        except ValueError:
+            pass
+    return _kurs_abfragen()
+
+
+def kurz_html(werte: list[tuple[str, float | None]], kurs: float | None) -> str:
+    """Werte der Seitenleiste untereinander: Name, Betrag in $, ungefähr in € (Raster, Klassen in _widgets.CSS)."""
+    zellen = []
+    for name, usd in werte:
+        eur = f"≈ {betrag(usd * kurs, '€')}" if kurs and usd is not None else ""
+        # "$" als Entität: Streamlit liest "$…$" sonst als Formel
+        zellen.append(f'<span>{escape(name)}</span><span class="lc-usd">{betrag(usd).replace("$", "&#36;")}</span>'
+                      f'<span class="lc-eur">{eur}</span>')
+    return f'<div class="lc-kurz">{"".join(zellen)}</div>'
 
 
 def schwellen() -> an.Schwellen:

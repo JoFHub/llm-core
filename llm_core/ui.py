@@ -31,12 +31,13 @@ AMPEL_ZEICHEN = {
 }
 
 
-def betrag(usd: float | None) -> str:
-    """4.1234 -> '4,12 $'; kleine Beträge mit mehr Stellen ('0,004 $'), None -> '–'."""
+def betrag(usd: float | None, waehrung: str = "$") -> str:
+    """4.1234 -> '4,12 $'; kleine Beträge mit mehr Stellen ('0,004 $'), None -> '–'. waehrung z. B. '€'."""
     if usd is None:
         return "–"
     stellen = 2 if abs(usd) >= 0.1 or usd == 0 else 3
-    return f"{usd:,.{stellen}f} $".replace(",", " ").replace(".", ",").replace(" ", ".")
+    zahl = f"{usd:,.{stellen}f}".replace(",", " ").replace(".", ",").replace(" ", ".")
+    return f"{zahl} {waehrung}"
 
 
 def kosten_zeilen(
@@ -71,57 +72,38 @@ def kosten_zeilen(
     return zeilen
 
 
-def kurzstatus_zeilen(
+def kurzstatus_werte(
+    konto: "_anbieter.KontoStatus | None",
+    keys: "list[_anbieter.KeyStatus]",
+) -> list[tuple[str, float | None]]:
+    """Kurzstatus der Konsole für OpenRouter (Seitenleiste): heute und Monat (Summe der Keys), Rest des
+    Guthabens (nur mit Provisioning-Key). Ohne Streamlit testbar."""
+    heute = [s.heute for s in keys if s.heute is not None]
+    monat = [s.monat for s in keys if s.monat is not None]
+    werte = [("heute", sum(heute) if heute else None), ("Monat", sum(monat) if monat else None)]
+    if konto is not None and not konto.fehler:
+        werte.append(("Rest", konto.rest))
+    return werte
+
+
+def kurzstatus_hinweise(
     konto: "_anbieter.KontoStatus | None",
     keys: "list[_anbieter.KeyStatus]",
     schwellen: "_anbieter.Schwellen | None" = None,
 ) -> list[str]:
-    """Kurzstatus der Konsole (Seitenleiste): Guthaben, Ampel je Key gezählt, Keys ohne Limit, Verbrauch.
-
-    Markdown-Zeilen für Streamlit (Material-Symbole), ohne Streamlit testbar. Keys nur mit Namen."""
-    zeilen: list[str] = []
-    if konto is not None:
-        if konto.fehler:
-            zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} Guthaben: {konto.fehler}")
-        else:
-            zeilen.append(f"Rest OpenRouter: **{betrag(konto.rest)}**")
-    zaehler: dict[str, int] = {}
-    for s in keys:
-        a = _anbieter.ampel(s, schwellen)
-        zaehler[a] = zaehler.get(a, 0) + 1
-    reihenfolge = (_anbieter.ROT, _anbieter.GELB, _anbieter.GRUEN, _anbieter.GRAU)
-    teile = [f"{AMPEL_ZEICHEN[a]} {zaehler[a]}" for a in reihenfolge if zaehler.get(a)]
-    if teile:
-        zeilen.append(f"{len(keys)} {'Key' if len(keys) == 1 else 'Keys'}: " + " · ".join(teile))
-    ohne_limit = [s.name for s in keys if not s.fehler and s.limit is None and s.limit_abfragbar]
-    if ohne_limit:
-        zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.ROT]} ohne Limit: " + ", ".join(ohne_limit))
-    heute = [s.heute for s in keys if s.heute is not None]
-    monat = [s.monat for s in keys if s.monat is not None]
-    if heute or monat:
-        zeilen.append(f"heute {betrag(sum(heute)) if heute else '–'} · Monat {betrag(sum(monat)) if monat else '–'}")
-    return zeilen
-
-
-def kurzstatus_anthropic_zeilen(
-    keys: "list[_anbieter.KeyStatus]",
-    heute: float | None,
-    monat: float | None,
-    monat_nr: int,
-) -> list[str]:
-    """Kurzstatus der Konsole für Anthropic (Seitenleiste): berechnete Kosten aus den Kosten-DBs, Kosten der
-    Organisation (Admin-API), Zahl der API-Keys. Ohne Ampel: Anthropic liefert je Key weder Verbrauch noch Limit."""
-    zeilen = [f"berechnet: {heute_monat_zeile(heute, monat, monat_nr)}"]
-    organisation = [s for s in keys if s.name == _anbieter.Anthropic.ORGANISATION]
-    # Ohne API-Key kein Hinweis: auf dem Server bekommt die Konsole Fabulas Key bewusst nicht
-    api = [s for s in keys if s.name != _anbieter.Anthropic.ORGANISATION and not s.fehler]
-    for s in organisation:
-        if s.fehler:
-            zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} Organisation: {s.fehler}")
-        else:
-            zeilen.append(f"Organisation: {heute_monat_zeile(s.heute, s.monat, monat_nr)}")
-    if api:
-        zeilen.append(f"{len(api)} {'API-Key' if len(api) == 1 else 'API-Keys'}")
+    """Nur was Aufmerksamkeit braucht (Seitenleiste der Konsole): Keys ohne Limit, am oder nahe am Limit,
+    Abfragefehler. Markdown-Zeilen mit Material-Symbolen; alles in Ordnung -> []."""
+    ohne_limit = [s for s in keys if not s.fehler and s.limit is None and s.limit_abfragbar]
+    rot = [s for s in keys if s not in ohne_limit and _anbieter.ampel(s, schwellen) == _anbieter.ROT]
+    gelb = [s for s in keys if _anbieter.ampel(s, schwellen) == _anbieter.GELB]
+    fehler = [s for s in keys if s.fehler]
+    zeilen = []
+    if konto is not None and konto.fehler:
+        zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} Guthaben: {konto.fehler}")
+    for ampel, text, liste in ((_anbieter.ROT, "ohne Limit", ohne_limit), (_anbieter.ROT, "Limit erreicht", rot),
+                               (_anbieter.GELB, "fast am Limit", gelb), (_anbieter.GRAU, "Fehler", fehler)):
+        if liste:
+            zeilen.append(f"{AMPEL_ZEICHEN[ampel]} {text}: " + ", ".join(s.name for s in liste))
     return zeilen
 
 
@@ -147,7 +129,7 @@ MONATSNAMEN = ("Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "Au
 
 
 def heute_monat_zeile(heute: float | None, monat: float | None, monat_nr: int) -> str:
-    """'heute 0,45 $ · Oktober 2,74 $' (Seitenleiste der Apps und der Konsole)."""
+    """'heute 0,45 $ · Oktober 2,74 $' (Seitenleiste der Apps)."""
     return f"heute {betrag(heute)} · {MONATSNAMEN[monat_nr - 1]} {betrag(monat)}"
 
 
