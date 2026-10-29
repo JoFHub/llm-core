@@ -120,9 +120,6 @@ def kosten_seitenleiste(
     return zeilen
 
 
-_ANBIETER_NAME = {"anthropic": "Anthropic", "openrouter": "OpenRouter", "openai": "OpenAI", "mistral": "Mistral"}
-
-
 def berechnet_zeilen(
     provider: str = "anthropic",
     tag: str | None = None,
@@ -131,7 +128,7 @@ def berechnet_zeilen(
 ) -> list[str]:
     """Zeile des Bausteins für berechnete Kosten (ohne Streamlit, testbar): heute und
     laufender Monat aus der Kosten-DB dieses Rechners (Token-Zahlen des Anbieters mal
-    Preisliste), z. B. "heute 0,45 $ · Oktober 2,74 $ (berechnet, Anthropic)"."""
+    Preisliste), z. B. "heute 0,45 $ · Oktober 2,74 $"."""
     jetzt = (jetzt or datetime.now(ZoneInfo(zeitzone))).astimezone(ZoneInfo(zeitzone))
     tag_beginn = jetzt.replace(hour=0, minute=0, second=0, microsecond=0)
     monat_beginn = tag_beginn.replace(day=1)
@@ -139,8 +136,7 @@ def berechnet_zeilen(
     monat = _cost_tracker.cost_since(monat_beginn, provider=provider, tag=tag)
     monatsname = ("Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August",
                   "September", "Oktober", "November", "Dezember")[jetzt.month - 1]
-    return [f"heute {betrag(heute)} · {monatsname} {betrag(monat)}",
-            f"berechnet, {_ANBIETER_NAME.get(provider, provider)}"]
+    return [f"heute {betrag(heute)} · {monatsname} {betrag(monat)}"]
 
 
 def kosten_seitenleiste_berechnet(

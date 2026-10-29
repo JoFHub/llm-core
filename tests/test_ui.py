@@ -189,5 +189,5 @@ def test_berechnet_zeilen_heute_und_monat(monkeypatch, tmp_path):
 
     jetzt = datetime(2026, 10, 29, 8, 0, tzinfo=ZoneInfo("Europe/Berlin"))
     assert ui.berechnet_zeilen("anthropic", tag="fabula", jetzt=jetzt) == [
-        "heute 0,45 $ · Oktober 2,55 $", "berechnet, Anthropic"]
+        "heute 0,45 $ · Oktober 2,55 $"]
     assert cost_tracker.cost_since(datetime(2026, 10, 1, tzinfo=timezone.utc)) == 6.55

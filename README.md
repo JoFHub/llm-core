@@ -224,7 +224,6 @@ from llm_core.ui import kosten_seitenleiste_berechnet
 
 kosten_seitenleiste_berechnet(provider="anthropic", titel="Kosten Fabula", tag="fabula")
 # heute 0,45 $ · Oktober 2,74 $
-# berechnet, Anthropic
 ```
 
 `berechnet_zeilen(...)` liefert dieselben Zeilen ohne Streamlit. Kein Limit, keine Ampel: die Obergrenze setzt man
