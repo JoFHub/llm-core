@@ -1,0 +1,32 @@
+{% extends "basis.html" %}
+{% block titel %}Neuer Key · Kosten{% endblock %}
+{% block inhalt %}
+<header class="kopf">
+  <a class="symbol zurueck" href="/" aria-label="Zurück zur Übersicht">‹</a>
+  <h1>Neuer Key</h1>
+</header>
+{% if fehler %}<p class="hinweis rot" role="alert">{{ fehler }}</p>{% endif %}
+{% if not verwaltung %}
+<p class="hinweis grau">Verwaltung nicht eingerichtet (kein Provisioning-Key).</p>
+{% elif not kurs %}
+<p class="hinweis grau">Ohne Euro-Kurs kann kein Key angelegt werden.</p>
+{% else %}
+<section class="karte">
+  <form method="post" action="/neu" class="formular">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Name
+      <input name="name" maxlength="60" autocomplete="off" autocapitalize="off" spellcheck="false" required
+             value="{{ eingabe.name or '' }}"></label>
+    <label>Limit in €
+      <input name="limit" inputmode="decimal" autocomplete="off" required value="{{ eingabe.limit or '' }}"></label>
+    <label>Zurücksetzen
+      <select name="reset">
+      {% for wert, text in RESETS.items() %}
+        <option value="{{ wert }}"{% if wert == (eingabe.reset or "monthly") %} selected{% endif %}>{{ text }}</option>
+      {% endfor %}
+      </select></label>
+    <button type="submit">Weiter …</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

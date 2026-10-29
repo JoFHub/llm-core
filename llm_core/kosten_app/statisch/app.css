@@ -1,0 +1,142 @@
+/* Kosten-App: eigenes CSS ohne Framework. iPhone eine Spalte, iPad/Rechner Karten nebeneinander, Breite begrenzt.
+   Hell/dunkel nach Systemeinstellung, sichere Ränder, Touch-Ziele ≥ 44 px, Eingaben 16 px (Safari zoomt sonst). */
+:root {
+  color-scheme: light dark;
+  --grund: #f4f5f7;
+  --flaeche: #ffffff;
+  --text: #1c1f24;
+  --leise: #6b7280;
+  --linie: #e3e5e8;
+  --akzent: #3d5166;
+  --akzent-text: #ffffff;
+  --gruen: #2e7d32;
+  --gelb: #ef6c00;
+  --rot: #c62828;
+  --grau: #8a8f98;
+  --rot-grund: #fdecea;
+  --gelb-grund: #fff3e0;
+  --grau-grund: #eef0f2;
+  --gruen-grund: #e8f5e9;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --grund: #16181c;
+    --flaeche: #23262b;
+    --text: #eceef1;
+    --leise: #9aa0a9;
+    --linie: #34383e;
+    --akzent: #8aa4bf;
+    --akzent-text: #16181c;
+    --gruen: #66bb6a;
+    --gelb: #ffa726;
+    --rot: #ef5350;
+    --grau: #8a8f98;
+    --rot-grund: #3b2224;
+    --gelb-grund: #3a2d1c;
+    --grau-grund: #2c2f34;
+    --gruen-grund: #1f3322;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--grund);
+  color: var(--text);
+  font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 12px) calc(env(safe-area-inset-right) + 16px)
+           calc(env(safe-area-inset-bottom) + 16px) calc(env(safe-area-inset-left) + 16px);
+}
+a { color: var(--akzent); }
+h1 { font-size: 1.6rem; margin: 0; font-weight: 700; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+h2 { font-size: .95rem; margin: 0 0 6px; font-weight: 600; display: flex; align-items: baseline; gap: 8px; }
+code { font-size: .9em; }
+
+.kopf { display: flex; align-items: center; gap: 8px; min-height: 44px; margin-bottom: 8px; }
+.kopf form { margin: 0; }
+.kopf.klein { margin: 16px 0 2px; }
+.kopf.klein h2 { margin: 0; flex: 1; font-size: 1.05rem; }
+
+/* runde Symbolknöpfe (⟳, +, ‹) */
+.symbol {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 22px; border: 0;
+  background: transparent; color: var(--akzent); font-size: 1.6rem; line-height: 1;
+  text-decoration: none; cursor: pointer; padding: 0;
+}
+.symbol:active { background: var(--linie); }
+.zurueck { margin-left: -12px; font-size: 2rem; }
+
+.karten { display: grid; gap: 12px; }
+@media (min-width: 640px) { .karten { grid-template-columns: 1fr 1fr; } }
+.karte {
+  background: var(--flaeche); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 12px;
+}
+.karten .karte { margin-bottom: 0; }
+.extern { margin-left: auto; font-size: .8rem; font-weight: 400; text-decoration: none; padding: 4px 0; }
+dl { margin: 0; }
+dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+dt { color: var(--leise); }
+dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+dd.text { white-space: normal; overflow-wrap: anywhere; }
+dd.stark { font-weight: 600; }
+
+/* Keys */
+.liste { list-style: none; margin: 0; padding: 0; background: var(--flaeche); border-radius: var(--radius); overflow: hidden; }
+.liste li + li { border-top: 1px solid var(--linie); }
+.zeile {
+  display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 12px 8px 16px;
+  color: var(--text); text-decoration: none;
+}
+.zeile:active { background: var(--linie); }
+.zeile .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zeile .wert { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.zeile .anteil { display: inline-block; min-width: 3.2em; text-align: right; }
+.zeile .pfeil { color: var(--leise); font-size: 1.3rem; }
+.zeile.gesperrt { color: var(--grau); }
+
+.punkt { display: inline-block; width: 10px; height: 10px; border-radius: 5px; flex: none; vertical-align: middle; }
+.punkt.gruen { background: var(--gruen); }
+.punkt.gelb { background: var(--gelb); }
+.punkt.rot { background: var(--rot); }
+.punkt.grau { background: var(--grau); }
+.punkt.aus { background: transparent; border: 1.5px solid var(--grau); }
+
+/* Hinweise nur bei Problemen */
+.hinweise { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.hinweis { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; border-left: 4px solid; }
+.hinweise .hinweis { margin: 0; }
+.hinweis.rot { background: var(--rot-grund); border-color: var(--rot); font-weight: 600; }
+.hinweis.orange { background: var(--gelb-grund); border-color: var(--gelb); }
+.hinweis.grau { background: var(--grau-grund); border-color: var(--grau); color: var(--text); }
+.meldung { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; background: var(--gruen-grund); }
+
+/* Formulare */
+.formular { display: grid; gap: 12px; margin: 6px 0; }
+label { display: grid; gap: 4px; color: var(--leise); font-size: .9rem; }
+input, select, textarea {
+  font: inherit; font-size: 16px; color: var(--text); background: var(--grund);
+  border: 1px solid var(--linie); border-radius: 10px; min-height: 44px; padding: 8px 12px; width: 100%;
+}
+input[inputmode="decimal"] { font-variant-numeric: tabular-nums; text-align: right; }
+button, .knopf {
+  display: inline-flex; align-items: center; justify-content: center; width: 100%; min-height: 48px;
+  font: inherit; font-weight: 600; border: 0; border-radius: 12px; cursor: pointer; text-decoration: none;
+  background: var(--akzent); color: var(--akzent-text); padding: 10px 16px;
+}
+button.symbol { width: 44px; min-height: 44px; background: transparent; color: var(--akzent); font-weight: 400; }
+button.gefahr { background: var(--rot); color: #fff; }
+button.zweit, .knopf.zweit { background: var(--grau-grund); color: var(--text); }
+button[disabled] { opacity: .6; }
+.klartext { font-family: ui-monospace, Menlo, Consolas, monospace; word-break: break-all; resize: none; margin-bottom: 10px; }
+
+.text p { margin: 6px 0; }
+.leise { color: var(--leise); font-size: .85rem; }
+footer { margin-top: 16px; color: var(--leise); font-size: .8rem; text-align: center; font-variant-numeric: tabular-nums; }
+footer a { color: var(--leise); }

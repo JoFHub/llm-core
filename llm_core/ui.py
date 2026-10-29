@@ -48,7 +48,7 @@ def kosten_zeilen(
     """Die Zeilen des Bausteins (ohne Streamlit, testbar).
 
     Kosten je Key, wie der Anbieter sie abrechnet (über alle Rechner): Verbrauch von Limit mit Ampel; heute/Monat
-    und Einzelheiten aus der Kosten-DB nur in der Konsole. Ohne Key oder bei Fehler eine graue Zeile, keine Schätzung."""
+    und Einzelheiten nur in der Kosten-App. Ohne Key oder bei Fehler eine graue Zeile, keine Schätzung."""
     key = os.environ.get(key_env, "").strip()
     zeilen: list[str] = []
     if key:
@@ -69,41 +69,6 @@ def kosten_zeilen(
         zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} Anbieter: {status.fehler}")
     else:
         zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} kein Key ({key_env})")
-    return zeilen
-
-
-def kurzstatus_werte(
-    konto: "_anbieter.KontoStatus | None",
-    keys: "list[_anbieter.KeyStatus]",
-) -> list[tuple[str, float | None]]:
-    """Kurzstatus der Konsole für OpenRouter (Seitenleiste): heute und Monat (Summe der Keys), Rest des
-    Guthabens (nur mit Provisioning-Key). Ohne Streamlit testbar."""
-    heute = [s.heute for s in keys if s.heute is not None]
-    monat = [s.monat for s in keys if s.monat is not None]
-    werte = [("heute", sum(heute) if heute else None), ("Monat", sum(monat) if monat else None)]
-    if konto is not None and not konto.fehler:
-        werte.append(("Rest", konto.rest))
-    return werte
-
-
-def kurzstatus_hinweise(
-    konto: "_anbieter.KontoStatus | None",
-    keys: "list[_anbieter.KeyStatus]",
-    schwellen: "_anbieter.Schwellen | None" = None,
-) -> list[str]:
-    """Nur was Aufmerksamkeit braucht (Seitenleiste der Konsole): Keys ohne Limit, am oder nahe am Limit,
-    Abfragefehler. Markdown-Zeilen mit Material-Symbolen; alles in Ordnung -> []."""
-    ohne_limit = [s for s in keys if not s.fehler and s.limit is None and s.limit_abfragbar]
-    rot = [s for s in keys if s not in ohne_limit and _anbieter.ampel(s, schwellen) == _anbieter.ROT]
-    gelb = [s for s in keys if _anbieter.ampel(s, schwellen) == _anbieter.GELB]
-    fehler = [s for s in keys if s.fehler]
-    zeilen = []
-    if konto is not None and konto.fehler:
-        zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} Guthaben: {konto.fehler}")
-    for ampel, text, liste in ((_anbieter.ROT, "ohne Limit", ohne_limit), (_anbieter.ROT, "Limit erreicht", rot),
-                               (_anbieter.GELB, "fast am Limit", gelb), (_anbieter.GRAU, "Fehler", fehler)):
-        if liste:
-            zeilen.append(f"{AMPEL_ZEICHEN[ampel]} {text}: " + ", ".join(s.name for s in liste))
     return zeilen
 
 

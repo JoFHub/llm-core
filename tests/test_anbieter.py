@@ -285,6 +285,12 @@ def test_limit_entfernen_sendet_null():
     assert [a for a in t.anfragen if a["methode"] == "PATCH"][0]["body"] == {"limit": None}
 
 
+def test_limit_zuruecksetzen_nie_sendet_null():
+    o, t = _verwaltung({("PATCH", "/keys/h1"): (200, {"data": {"hash": "h1", "limit": 5}})})
+    o.limit_aendern("h1", 5, limit_reset=an.NIE, bestaetigt=True)
+    assert [a for a in t.anfragen if a["methode"] == "PATCH"][0]["body"] == {"limit": 5, "limit_reset": None}
+
+
 def test_key_deaktivieren_und_aktivieren():
     o, t = _verwaltung({("PATCH", "/keys/h1"): (200, {"data": {"hash": "h1", "disabled": True}}),
                         ("PATCH", "/keys/h2"): (200, {"data": {"hash": "h2", "disabled": False}})})

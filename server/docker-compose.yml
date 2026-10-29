@@ -1,6 +1,6 @@
-# Kosten-Konsole auf dem Server (README „Konsole auf dem Server“): ein Container, ohne eigenen Port nach außen.
+# Kosten-App auf dem Server (README „Kosten-App auf dem Server“): ein Container, ohne eigenen Port nach außen.
 # HTTPS und Anmeldung macht Caddy aus dem Probatio-Stack (probatio/server/Caddyfile:
-# import geschuetzt kosten kosten:8510); dafür hängt die Konsole im Netz „probatio“ dieses Stacks.
+# import geschuetzt kosten kosten:8510); dafür hängt die App im Netz „probatio“ dieses Stacks.
 # Aufruf in diesem Ordner: bash aktualisieren.sh (bzw. docker compose up -d --build)
 # Keys und Adresse in server/.env (Vorlage env.example), nicht in Git.
 name: llm-core
@@ -8,12 +8,12 @@ name: llm-core
 services:
   kosten:
     build: ..
-    image: llm-core-konsole:latest
+    image: llm-core-kosten:latest
     restart: unless-stopped
     env_file: .env
     environment:
-      # Kosten-DBs der Apps auf diesem Server, nur lesend (Details lokal, berechnete Anthropic-Kosten)
-      LLM_CORE_KONSOLE_DBS: /kosten/fabula:/kosten/probatio-ta:/kosten/probatio-visibilia
+      # Kosten-DBs der Apps auf diesem Server, nur lesend (berechnete Anthropic-Kosten)
+      LLM_CORE_KOSTEN_DBS: /kosten/fabula:/kosten/probatio-ta:/kosten/probatio-visibilia
     volumes:
       - ../../fabula/server/daten/llm_core:/kosten/fabula:ro
       - ../../probatio/server/daten/ta/probatio/llm_core:/kosten/probatio-ta:ro

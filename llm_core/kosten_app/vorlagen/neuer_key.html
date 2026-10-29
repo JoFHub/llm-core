@@ -1,0 +1,19 @@
+{% extends "basis.html" %}
+{% block titel %}Key angelegt · Kosten{% endblock %}
+{% block inhalt %}
+<header class="kopf">
+  <h1>Key angelegt</h1>
+</header>
+<section class="karte">
+  <p class="meldung" role="status">{{ name }} ist angelegt.</p>
+  {% if klartext %}
+  <p class="hinweis orange">Der Key wird nur dieses eine Mal angezeigt. Jetzt kopieren und sofort in die
+    <code>.env</code> der App bzw. den Passwortmanager übernehmen.</p>
+  <textarea id="klartext" class="klartext" readonly rows="3" autocomplete="off" spellcheck="false">{{ klartext }}</textarea>
+  <button type="button" data-kopieren="klartext">Kopieren</button>
+  {% else %}
+  <p class="hinweis grau">Der Anbieter hat keinen Klartext geliefert — den Key in der OpenRouter-Konsole prüfen.</p>
+  {% endif %}
+  <p><a class="knopf zweit" href="/">Fertig</a></p>
+</section>
+{% endblock %}

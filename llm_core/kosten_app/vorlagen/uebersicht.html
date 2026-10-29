@@ -1,0 +1,57 @@
+{% extends "basis.html" %}
+{% macro karte(k) %}
+<section class="karte">
+  <h2>{{ k.titel }} <a class="extern" href="{{ k.link }}" target="_blank" rel="noopener noreferrer">Konsole ↗</a></h2>
+  <dl>
+  {% for name, usd in k.zeilen %}
+    <div><dt>{{ name }}</dt><dd>{{ eur(usd) }}</dd></div>
+  {% endfor %}
+  </dl>
+</section>
+{% endmacro %}
+{% block inhalt %}
+<header class="kopf">
+  <h1>Kosten</h1>
+  <form method="post" action="/aktualisieren">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="symbol" type="submit" title="Aktualisieren" aria-label="Aktualisieren">⟳</button>
+  </form>
+</header>
+{% if meldung %}<p class="meldung" role="status">{{ meldung }}</p>{% endif %}
+{% if u.hinweise %}
+<ul class="hinweise" role="alert">
+  {% for h in u.hinweise %}<li class="hinweis {{ h.stufe }}">{{ h.text }}</li>{% endfor %}
+</ul>
+{% endif %}
+<div class="karten">
+  {{ karte(u.openrouter) }}
+  {{ karte(u.anthropic) }}
+</div>
+<section class="keys">
+  <header class="kopf klein">
+    <h2>Keys</h2>
+    {% if u.verwaltung %}<a class="symbol" href="/neu" title="Neuer Key" aria-label="Neuer Key">+</a>{% endif %}
+  </header>
+  {% if u.keys %}
+  <ul class="liste">
+  {% for z in u.keys %}
+    <li><a class="zeile{% if z.gesperrt %} gesperrt{% endif %}" href="/key/{{ z.schluessel | urlencode }}">
+      <span class="punkt {{ z.ampel }}" aria-hidden="true"></span>
+      <span class="name">{{ z.name }}</span>
+      <span class="wert">
+      {% if z.gesperrt %}gesperrt
+      {% elif z.status.fehler %}Fehler
+      {% elif z.status.limit is none %}{{ eur(z.verbrauch) }} · ohne Limit
+      {% else %}{{ eur(z.verbrauch) }} · <span class="anteil">{{ prozent(z.anteil) }}</span>
+      {% endif %}
+      </span>
+      <span class="pfeil" aria-hidden="true">›</span>
+    </a></li>
+  {% endfor %}
+  </ul>
+  {% else %}
+  <p class="leise">Keine Keys.</p>
+  {% endif %}
+</section>
+{% endblock %}
+{% block fuss %}Stand {{ u.stand.strftime("%H:%M") }} · {{ kurs_text }} · <a href="/info">Info</a>{% endblock %}

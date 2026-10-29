@@ -1,0 +1,46 @@
+{% extends "basis.html" %}
+{% block titel %}Info · Kosten{% endblock %}
+{% block inhalt %}
+<header class="kopf">
+  <a class="symbol zurueck" href="/" aria-label="Zurück zur Übersicht">‹</a>
+  <h1>Info</h1>
+</header>
+<section class="karte text">
+  <h2>Woher die Zahlen kommen</h2>
+  <p><b>OpenRouter</b> (Memoria, Probatio): direkt beim Anbieter, je Key — so, wie OpenRouter abrechnet. „heute“
+    und Monat sind die Summe aller Keys, „Guthaben“ der Rest des eingezahlten Guthabens.</p>
+  <p><b>Anthropic</b> (Fabula): aus den Kosten-DBs auf dem Server berechnet — Token-Zahlen von Anthropic mal
+    Preisliste in <code>cost_tracker</code>. Genau, solange die Preisliste stimmt. Gefundene Kosten-DBs:
+    {{ dbs }}. Die Ausgabengrenze bei Anthropic steht in der <a href="{{ konsolen[1] }}" target="_blank"
+    rel="noopener noreferrer">Anthropic Console</a>.</p>
+  <p>Verläufe, Kosten je Tag und je Modell: <a href="{{ konsolen[0] }}" target="_blank" rel="noopener noreferrer">OpenRouter</a>,
+    <a href="{{ konsolen[1] }}" target="_blank" rel="noopener noreferrer">Anthropic</a>.</p>
+</section>
+<section class="karte text">
+  <h2>Euro</h2>
+  <p>Alle Beträge in Euro, umgerechnet zum Referenzkurs der EZB (höchstens zweimal am Tag abgefragt), ungefähr.
+    Aktuell: {{ kurs_text }}.</p>
+  <p>OpenRouter führt Limits in Dollar. Ein Limit in Euro wird beim Speichern zum Tageskurs umgerechnet; sein
+    Euro-Wert schwankt danach leicht mit dem Kurs. Ohne Kurs zeigt die App keine Beträge und lässt keine Limits
+    ändern.</p>
+</section>
+<section class="karte text">
+  <h2>Ampel</h2>
+  <p><span class="punkt gruen"></span> unter {{ prozent(schwellen.gelb) }} des Limits,
+    <span class="punkt gelb"></span> ab {{ prozent(schwellen.gelb) }},
+    <span class="punkt rot"></span> ab {{ prozent(schwellen.rot) }} oder <b>ohne Limit</b>,
+    <span class="punkt grau"></span> Abfrage fehlgeschlagen,
+    <span class="punkt aus"></span> gesperrt. Bei Limits mit Zurücksetzen zählt der laufende Zeitraum.</p>
+</section>
+<section class="karte text">
+  <h2>Verwaltung</h2>
+  {% if verwaltung %}
+  <p>Limit ändern, Keys sperren und anlegen (nur OpenRouter). Jede Änderung zeigt vorher und nachher und
+    braucht eine Bestätigung. Der Klartext eines neuen Keys erscheint genau einmal.</p>
+  {% else %}
+  <p class="hinweis grau">Verwaltung aus: kein OpenRouter-Provisioning-Key eingerichtet
+    (<code>OPENROUTER_PROVISIONING_KEY</code>). Angezeigt werden nur die Keys aus der Umgebung.</p>
+  {% endif %}
+</section>
+<p class="leise">Stand {{ stand.strftime("%d.%m.%Y %H:%M") }} · Zwischenspeicher 60 s, ⟳ fragt neu · llm-core {{ version }}</p>
+{% endblock %}

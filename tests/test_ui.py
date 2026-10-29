@@ -1,14 +1,11 @@
-"""Tests für den Seitenleisten-Baustein und die Konsole — ohne Netz, ohne Streamlit."""
+"""Tests für den Seitenleisten-Baustein — ohne Netz, ohne Streamlit."""
 import subprocess
-import sqlite3
 import sys
 
 import pytest
 
 from llm_core import anbieter as an
 from llm_core import cost_tracker
-from llm_core.konsole import daten
-from llm_core.konsole.__main__ import befehl
 
 KEY = "sk-or-v1-" + "0" * 60 + "a1b2"
 
@@ -32,7 +29,7 @@ def _sauber(monkeypatch):
 
 
 def test_llm_core_haengt_nicht_von_streamlit_ab():
-    code = ("import sys, llm_core, llm_core.ui, llm_core.anbieter, llm_core.konsole, llm_core.konsole.daten;"
+    code = ("import sys, llm_core, llm_core.ui, llm_core.anbieter;"
             "sys.exit(1 if 'streamlit' in sys.modules else 0)")
     assert subprocess.run([sys.executable, "-c", code]).returncode == 0
 
@@ -94,112 +91,6 @@ def test_seitenleiste_ohne_streamlit_klare_meldung(monkeypatch):
 def test_betrag_in_euro():
     from llm_core.ui import betrag
     assert betrag(1234.5) == "1.234,50 $" and betrag(0.004, "€") == "0,004 €" and betrag(None, "€") == "–"
-
-
-def test_kurzstatus_werte_und_hinweise():
-    from llm_core.ui import AMPEL_ZEICHEN, kurzstatus_hinweise, kurzstatus_werte
-    konto = an.KontoStatus("openrouter", guthaben=30.0, verbraucht=13.7)
-    keys = [
-        an.KeyStatus("openrouter", "ta", kennung="sk-or-v1-…1111", limit=10.0, rest=9.9, heute=0.1, monat=0.1),
-        an.KeyStatus("openrouter", "memoria", kennung="sk-or-v1-…2222", limit=None, heute=0.5, monat=3.5),
-        an.KeyStatus("openrouter", "fabula", limit=10.0, verbrauch_gesamt=9.0, rest=1.0),
-        an.KeyStatus("openrouter", "alt", fehler="Zeitüberschreitung"),
-    ]
-    assert kurzstatus_werte(konto, keys) == [("heute", pytest.approx(0.6)), ("Monat", pytest.approx(3.6)),
-                                             ("Rest", pytest.approx(16.3))]
-    rot, gelb, grau = (AMPEL_ZEICHEN[a] for a in (an.ROT, an.GELB, an.GRAU))
-    hinweise = kurzstatus_hinweise(konto, keys)
-    assert hinweise == [f"{rot} ohne Limit: memoria", f"{gelb} fast am Limit: fabula", f"{grau} Fehler: alt"]
-    assert not any("1111" in z or "2222" in z for z in hinweise)   # Keys nur mit Namen
-
-
-def test_kurzstatus_ohne_konto_und_keys():
-    from llm_core.ui import kurzstatus_hinweise, kurzstatus_werte
-    assert kurzstatus_werte(None, []) == [("heute", None), ("Monat", None)]   # ohne Provisioning-Key kein Rest
-    assert kurzstatus_hinweise(None, []) == []                                # alles gut: keine Zeile
-    [z] = kurzstatus_hinweise(an.KontoStatus("openrouter", fehler="Zeitüberschreitung"), [])
-    assert "Zeitüberschreitung" in z
-
-
-def test_kurz_html_mit_euro():
-    from llm_core.konsole import _gemeinsam as g
-    html = g.kurz_html([("heute", 0.5), ("Rest", None)], 0.9)
-    assert "0,50 &#36;" in html and "≈ 0,45 €" in html and "$" not in html
-    assert "≈" not in g.kurz_html([("heute", 0.5)], None)   # ohne Kurs keine €-Spalte
-
-
-# -- Konsole: Start und lokale Details ---------------------------------------------
-
-def test_konsole_startbefehl_nur_localhost():
-    cmd = befehl(8510, "localhost")
-    assert cmd[1:4] == ["-m", "streamlit", "run"] and cmd[4].endswith("app.py")
-    assert cmd[cmd.index("--server.address") + 1] == "localhost"
-    assert cmd[cmd.index("--server.port") + 1] == "8510"
-
-
-def test_details_lokal(tmp_path):
-    cost_tracker.record("openrouter", "google/gemini-2.5-flash", 100, 50, cost_usd_override=0.5, tag="visibilia")
-    cost_tracker.record("anthropic", "claude-sonnet-4-6", 1000, 100, tag="")
-    db = tmp_path / "costs.sqlite"
-    d = daten.details(db, tage=30)
-    assert d["fehler"] is None and len(d["je_tag"]) == 1 and len(d["je_modell"]) == 2
-    assert {z["zuordnung"] for z in d["je_tag_zuordnung"]} == {"visibilia", "(ohne)"}
-    nur = daten.details(db, tage=30, tag="visibilia")
-    assert nur["summe"] == pytest.approx(0.5)
-    nur_or = daten.details(db, tage=30, provider="openrouter")
-    assert [m["modell"] for m in nur_or["je_modell"]] == ["google/gemini-2.5-flash"]
-    assert nur_or["summe"] == pytest.approx(0.5)
-
-
-def test_kosten_seit_mehrere_dbs_je_anbieter(tmp_path):
-    from datetime import datetime, timezone
-    dbs = []
-    for name, kosten in (("a", 1.0), ("b", 2.0)):
-        db = tmp_path / name / "costs.sqlite"
-        db.parent.mkdir()
-        conn = sqlite3.connect(db)
-        conn.execute("CREATE TABLE llm_usage (timestamp TEXT, provider TEXT, cost_usd REAL)")
-        conn.executemany("INSERT INTO llm_usage VALUES (?, ?, ?)", [
-            ("2026-10-29T06:00:00+00:00", "anthropic", kosten),
-            ("2026-10-29T06:00:00+00:00", "openrouter", 10.0),
-            ("2026-09-30T06:00:00+00:00", "anthropic", 100.0)])
-        conn.commit()
-        conn.close()
-        dbs.append(db)
-    seit = datetime(2026, 10, 1, tzinfo=timezone.utc)
-    assert daten.kosten_seit(dbs, seit, "anthropic") == (pytest.approx(3.0), None)
-    summe, fehler = daten.kosten_seit(dbs + [tmp_path / "fehlt" / "costs.sqlite"], seit, "anthropic")
-    assert summe == pytest.approx(3.0) and "DB nicht lesbar" in fehler
-
-
-def test_details_alt_db_ohne_tag_spalte(tmp_path):
-    db = tmp_path / "alt" / "costs.sqlite"
-    db.parent.mkdir()
-    conn = sqlite3.connect(db)
-    conn.execute("CREATE TABLE llm_usage (id INTEGER PRIMARY KEY, timestamp TEXT, provider TEXT, model TEXT, "
-                 "prompt_tokens INTEGER, completion_tokens INTEGER, cost_usd REAL)")
-    conn.execute("INSERT INTO llm_usage VALUES (1, '2999-01-01T00:00:00', 'p', 'm', 1, 1, 2.0)")
-    conn.commit()
-    conn.close()
-    d = daten.details(db, tage=30)
-    assert d["fehler"] is None and d["summe"] == pytest.approx(2.0)
-    assert daten.details(db, tage=30, tag="x")["summe"] == 0.0
-
-
-def test_details_fehlende_db_wird_nicht_angelegt(tmp_path):
-    db = tmp_path / "gibtsnicht" / "costs.sqlite"
-    assert daten.details(db)["fehler"]
-    assert not db.exists()
-
-
-def test_db_kandidaten(tmp_path, monkeypatch):
-    memoria = tmp_path / "memoria"
-    memoria.mkdir()
-    (memoria / "costs.sqlite").write_bytes(b"")
-    monkeypatch.setattr(daten, "STANDARD_ORDNER", ())
-    monkeypatch.setenv("LLM_CORE_KONSOLE_DBS", f"{memoria}{__import__('os').pathsep}{tmp_path / 'leer'}")
-    cost_tracker.record("p", "m", 0, 0)   # legt costs.sqlite in LLM_CORE_DATA_DIR (= tmp_path) an
-    assert daten.db_kandidaten() == [(memoria / "costs.sqlite").resolve(), (tmp_path / "costs.sqlite").resolve()]
 
 
 def test_berechnet_zeilen_heute_und_monat(monkeypatch, tmp_path):

@@ -1,0 +1,10 @@
+{% extends "basis.html" %}
+{% block titel %}{{ titel }} · Kosten{% endblock %}
+{% block inhalt %}
+<header class="kopf">
+  <a class="symbol zurueck" href="/" aria-label="Zurück zur Übersicht">‹</a>
+  <h1>{{ titel }}</h1>
+</header>
+<p class="hinweis grau">{{ text }}</p>
+<p><a class="knopf zweit" href="/">Zur Übersicht</a></p>
+{% endblock %}

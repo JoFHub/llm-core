@@ -168,14 +168,16 @@ cost_tracker.tag_summary(days=30)    # [{tag, provider, cost_usd, calls, last}]
 
 Die Preistabelle liegt in `llm_core/cost_tracker.py` (`pricing_table()`); unbekannte Modelle werden mit Kosten 0 erfasst.
 
-## Kosten und Keys: Konsole und Seitenleiste
+## Kosten und Keys: Kosten-App und Seitenleiste
 
 Der **echte Verbrauch** steht beim Anbieter, je Key; die lokale Kosten-DB ist eine Schätzung je Rechner.
 `llm_core.anbieter` fragt den Anbieter ab, `llm_core.ui` zeigt das Ergebnis in einer App-Seitenleiste,
-`llm_core.konsole` ist die Verwaltungsoberfläche. Mistral ist bewusst nicht dabei.
+`llm_core.kosten_app` ist die kleine Web-App fürs iPhone und iPad (Übersicht in Euro, einfache Verwaltung).
+Mistral ist bewusst nicht dabei.
 
 ```bash
-pip install "llm-core[ui] @ git+https://github.com/JoFHub/llm-core.git"   # Streamlit nur mit Extra ui
+pip install "llm-core[ui] @ git+https://github.com/JoFHub/llm-core.git"    # Seitenleiste: Streamlit nur mit Extra ui
+pip install "llm-core[app] @ git+https://github.com/JoFHub/llm-core.git"   # Kosten-App: Starlette, Jinja2, Uvicorn
 ```
 
 ### Anbieter-Status (ohne Oberfläche)
@@ -210,7 +212,7 @@ kosten_seitenleiste(key_env="OPENROUTER_API_KEY_VISIBILIA", titel="Kosten Visibi
 ```
 
 Ein bis zwei kleine Zeilen: `:green[:material/check_circle:] 4,12 $ von 10,00 $ (41 %)`
-(Ampel als farbiges Material-Symbol); heute/Monat stehen nur in der Konsole. Gezeigt werden
+(Ampel als farbiges Material-Symbol); heute/Monat stehen nur in der Kosten-App. Gezeigt werden
 die Kosten je Key, wie der Anbieter sie abrechnet (über alle Rechner); ohne Key oder bei Fehler eine graue Zeile
 (`kein Key (…)` bzw. die Fehlermeldung), keine Schätzung aus der Kosten-DB. Der Key bleibt im
 Server-Prozess; ins HTML kommt nur der Text. `kosten_zeilen(...)` liefert dieselben Zeilen ohne Streamlit.
@@ -235,7 +237,7 @@ Kosten zeigt jede App gleich, und nur so — maßgeblich sind die **Kosten je Ke
 (Ausnahme: Apps direkt bei Anthropic, s. oben):
 
 1. **Ein OpenRouter-Key je App bzw. Kundenprofil, immer mit Limit** (`OPENROUTER_API_KEY_<APP|PROFIL>`, angelegt
-   und begrenzt in der Konsole). Ohne eigenen Key gilt der allgemeine Key der App. Eine App direkt bei Anthropic
+   und begrenzt in der Kosten-App). Ohne eigenen Key gilt der allgemeine Key der App. Eine App direkt bei Anthropic
    (Fabula) hat stattdessen eine Ausgabengrenze in der Anthropic Console.
 2. **In der App nur der Baustein**: einmal unten in der Seitenleiste
    `kosten_seitenleiste(key_env=<Key der App bzw. des Profils>, titel="Kosten <Name>")`, bei Anthropic
@@ -243,67 +245,72 @@ Kosten zeigt jede App gleich, und nur so — maßgeblich sind die **Kosten je Ke
    Keine eigene Kostenseite, keine eigene Abfrage beim Anbieter, keine eigenen Betragsformate. Der Baustein zeigt
    nur den eigenen Key — ein Kunde sieht in einer Vorführung keine anderen Kunden.
 3. **Kosten-DB nur für Einzelheiten**: jeder Aufruf mit `tag` (App bzw. Kundenprofil, `cost_tracker.set_tag_source`)
-   in eine eigene Kosten-DB je App (`LLM_CORE_DATA_DIR`; auf dem Server im Datenordner). Sie zeigt in der Konsole,
-   welches Modell und welcher Teil der App die Kosten verursacht — in der App erscheint sie nur über
-   `kosten_seitenleiste_berechnet` (Anthropic).
-4. **Einzelheiten und Verwaltung nur in der Konsole** (`python -m llm_core.konsole`, auf dem Omen über Porta):
-   Verbrauch aller Keys, Kosten je Tag, Modell und `tag`, Limits ändern, Keys anlegen oder sperren.
+   in eine eigene Kosten-DB je App (`LLM_CORE_DATA_DIR`; auf dem Server im Datenordner). Daraus berechnet die
+   Kosten-App die Anthropic-Kosten; in der App erscheint sie nur über `kosten_seitenleiste_berechnet` (Anthropic).
+4. **Übersicht und Verwaltung in der Kosten-App** (auf dem Server, auch am iPhone): Verbrauch aller Keys in Euro,
+   Limits ändern, Keys anlegen oder sperren. Verläufe und Kosten je Tag oder Modell in den Konsolen der Anbieter.
 
-### Konsole
+### Kosten-App
+
+Eine kleine Web-App, mit der man auf dem iPhone oder iPad in wenigen Sekunden sieht, was die Sprachmodelle kosten —
+**nur in Euro** —, und mit der man einfache Verwaltung erledigt (nur OpenRouter). Ersetzt seit 0.3.0 die
+Streamlit-Konsole.
 
 ```bash
-python -m llm_core.konsole            # http://localhost:8510 (--port, LLM_CORE_KONSOLE_PORT)
+pip install -e ".[app]"
+python -m llm_core.kosten_app          # http://localhost:8510 (--port, --adresse; LLM_CORE_APP_PORT/_ADRESSE)
 ```
 
-Zwei getrennte Seiten, je Anbieter eine (seit 2026-10-29: Memoria und Probatio nur über OpenRouter, Fabula nur
-direkt bei Anthropic). Jede Seite zeigt nur ihren Anbieter, auch in den lokalen Details.
+- **Übersicht:** OpenRouter (heute, laufender Monat = Summe der Keys, Rest des Guthabens), Anthropic (heute und
+  Monat aus den Kosten-DBs, Zeitzone Europe/Berlin), darunter eine Zeile je OpenRouter-Key mit Ampel, Verbrauch im
+  laufenden Limit-Zeitraum und Anteil am Limit; Probleme zuerst, gesperrte Keys grau am Ende. Hinweise erscheinen
+  nur bei Problemen: Key ohne Limit, Limit erreicht (rot), fast erreicht (orange, `LLM_CORE_AMPEL_GELB`), Anbieter
+  nicht erreichbar, kein Kurs (grau). ⟳ leert den Zwischenspeicher. Links zu den Konsolen der Anbieter.
+- **Key** (Antippen): Kennung gekürzt, Status, heute/Monat/gesamt, Limit mit Zurücksetzen; mit Provisioning-Key
+  **Limit ändern** (Eingabe in €, höchstens 1000 €), **sperren/entsperren**, über **+** einen **neuen Key**
+  anlegen. Jede Änderung zeigt vorher → nachher und läuft erst nach der Bestätigung. Der Klartext eines neuen Keys
+  erscheint genau einmal (mit „Kopieren“) und wird nie gespeichert oder geloggt.
+- **Euro:** EZB-Referenzkurs über frankfurter.dev, höchstens zweimal am Tag abgefragt, im Prozess
+  zwischengespeichert; ohne Antwort gilt der letzte bekannte Kurs. Fester Kurs: `LLM_CORE_EUR_KURS=0,92`. Ohne Kurs
+  zeigt die App „–“ statt Beträgen (nie Dollar) und lässt keine Limits ändern. OpenRouter führt Limits in Dollar:
+  ein Limit in € wird beim Speichern zum Tageskurs umgerechnet (auf Cent).
+- **Info** (Fußzeile): Herkunft der Zahlen, Kurs, Ampel, Stand.
+- Kosten-DBs: `LLM_CORE_KOSTEN_DBS` (Ordner, getrennt mit `;` unter Windows bzw. `:` sonst; der alte Name
+  `LLM_CORE_KONSOLE_DBS` gilt weiter), `LLM_CORE_DATA_DIR`, `~/.llm_core`, `~/.memoria`; nur lesend.
 
-**OpenRouter** (Memoria, Probatio):
+Technik: Starlette + Jinja2, serverseitig gerendert, HTML-Formulare, eigenes CSS, ein wenig JavaScript (Kopieren),
+kein Build-Schritt. Logik ohne Web-Framework in `kosten_app/logik.py`, `kurs.py`, `daten.py`.
 
-- **Übersicht:** alle Keys mit Verbrauch heute/Monat/gesamt, Limit, Ampel; Guthaben; Warnung bei Keys ohne Limit.
-- **Verwalten** (nur mit Provisioning-Key): Limit ändern, Key deaktivieren/aktivieren, neuen Key anlegen. Jede
-  Änderung zeigt vorher/nachher und braucht eine Bestätigung. Der Klartext eines neuen Keys wird genau einmal
-  angezeigt (sofort in die `.env` der App bzw. den Passwortmanager übernehmen) und nie gespeichert oder geloggt.
-- **Details lokal:** Kosten je Tag, Modell und `tag` der OpenRouter-Aufrufe aus einer wählbaren Kosten-DB.
+Sicherheit: keine eigene Anmeldung — lokal nur `localhost`, auf dem Server nur hinter Caddy. Keys nie im HTML, in
+URLs oder Logs (nur gekürzt). Ändernde Aktionen nur per POST mit CSRF-Token (an das Sitzungs-Cookie gebunden,
+`SameSite=Strict`) und Prüfung von `Origin`/`Sec-Fetch-Site`; Bestätigung serverseitig (Plan einmal verwendbar,
+10 Minuten gültig). `Content-Security-Policy` ohne fremde Quellen, `Cache-Control: no-store` für alle Seiten.
+`/gesund` für den Healthcheck (fragt keinen Anbieter).
 
-**Anthropic** (Fabula):
+#### Als App auf den Home-Bildschirm (iPhone, iPad)
 
-- **Übersicht:** berechnete Kosten heute und im laufenden Monat aus allen Kosten-DBs dieses Rechners, mit
-  `ANTHROPIC_ADMIN_KEY` zusätzlich die Kosten der Organisation; die API-Keys nur gekürzt. Kein Limit, keine Ampel:
-  die Ausgabengrenze steht in der Anthropic Console.
-- **Details lokal:** wie bei OpenRouter, nur die Anthropic-Aufrufe.
+1. Die Adresse (Server: `https://kosten.31-70-152-107.sslip.io`) in **Safari** öffnen und anmelden.
+2. Teilen-Knopf → **Zum Home-Bildschirm** → „Kosten“.
+3. Beim ersten Start der Home-Bildschirm-App einmal anmelden: iOS gibt ihr einen eigenen Cookie-Speicher, die
+   Anmeldung aus Safari gilt dort nicht. Die Anmeldeseite (`/_anmeldung/`) öffnet sich in der App selbst (gleiche
+   Adresse, `scope: "/"`); danach hält das Cookie 30 Tage.
 
-Kosten-DBs: `~/.llm_core`, `~/.memoria`, `LLM_CORE_DATA_DIR`, weitere über `LLM_CORE_KONSOLE_DBS` (getrennt mit `;`
-unter Windows bzw. `:` sonst); sie werden nur lesend geöffnet.
+### Kosten-App auf dem Server
 
-Stil und Bedienung wie Memoria (GUI-Standards in `memoria/CLAUDE.md`): Theme hell/dunkel in
-`llm_core/konsole/.streamlit/config.toml`, globales CSS und Knopfleiste unter dem Titel in
-`llm_core/konsole/_widgets.py`, Seiten in `llm_core/konsole/seiten/`. Knopfleiste je Seite: „Hilfe“,
-„Aktualisieren“, „Optionen“ (je Seite eigene: Ampel-Schwelle nur bei OpenRouter; Tage, Zuordnung, weitere DB),
-„Dashboard“ des Anbieters. In der Seitenleiste je Anbieter ein Menüpunkt, darunter heute, Monat und (OpenRouter)
-Rest in $ und ungefähr in € (EZB-Kurs über frankfurter.dev, einmal am Tag; fester Kurs mit `LLM_CORE_EUR_KURS`);
-Hinweise nur, wenn etwas nicht stimmt (`ui.kurzstatus_werte`, `ui.kurzstatus_hinweise`). Auf dem iPhone ist die
-Seitenleiste anfangs zu.
+Die App läuft auf dem Probatio-Server, damit die Kosten immer erreichbar sind: OpenRouter (Memoria, Probatio)
+kommt ohnehin über die Keys beim Anbieter, und Fabula — die einzige App direkt bei Anthropic — läuft nur dort,
+ihre Kosten-DB liegt also auf demselben Rechner.
 
-Die Konsole hört nur auf `localhost` und hat keine eigene Anmeldung. Für einen Server-Betrieb (`--adresse`) gehört
-sie hinter eine vorhandene Anmeldung.
-
-### Konsole auf dem Server
-
-Die Konsole läuft auf dem Probatio-Server (seit 2026-10-29), damit die Kosten immer erreichbar sind: OpenRouter
-(Memoria, Probatio) kommt ohnehin über die Keys beim Anbieter, und Fabula — die einzige App direkt bei Anthropic —
-läuft nur dort, ihre Kosten-DB liegt also auf demselben Rechner.
-
-- Eigener Stack in `~/llm-core/server/` (Projekt `llm-core`, Container `kosten:8510`, kein Port nach außen) im Netz
+- Eigener Stack in `~/llm-core/server/` (Projekt `llm-core`, Dienst `kosten:8510`, kein Port nach außen) im Netz
   `probatio`; HTTPS und Anmeldung macht Caddy aus dem Probatio-Stack
   (`{$KOSTEN_HOST} { import geschuetzt kosten kosten:8510 }`), Benutzer `kosten` (`bash passwort.sh kosten` in
   `~/probatio/server`).
 - Kosten-DBs nur lesend eingebunden: Fabula (`~/fabula/server/daten/llm_core`) und die Probatio-Instanzen
-  `ta`, `visibilia` (`~/probatio/server/daten/<kunde>/probatio/llm_core`).
+  `ta`, `visibilia` (`~/probatio/server/daten/<kunde>/probatio/llm_core`), Variable `LLM_CORE_KOSTEN_DBS`.
 - Keys in `server/.env` (Vorlage `server/env.example`): `KOSTEN_HOST`, `OPENROUTER_PROVISIONING_KEY`, optional
-  `ANTHROPIC_ADMIN_KEY`. Das Image enthält keine Keys (`.dockerignore`).
+  `LLM_CORE_EUR_KURS`. Das Image enthält keine Keys (`.dockerignore`).
 - Aktualisieren: `ssh probatio-server`, `bash llm-core/server/aktualisieren.sh` (holt `main`, baut, startet neu,
-  prüft Gesundheit und Anmeldeseite).
+  prüft Gesundheit über `/gesund` und die Anmeldeseite).
 
 Einrichten (einmal): `git clone https://github.com/JoFHub/llm-core.git ~/llm-core`, `server/.env` aus
 `env.example` anlegen, `KOSTEN_HOST` auch in `~/probatio/server/.env` eintragen, Caddy im Probatio-Stack neu
@@ -315,6 +322,7 @@ starten, Passwort setzen, `bash ~/llm-core/server/aktualisieren.sh --immer`.
 |---|---|
 | `OPENROUTER_API_KEY*` | Keys der Apps (ein Key je App bzw. Kundenprofil, jeder mit Limit) |
 | `OPENROUTER_PROVISIONING_KEY` | Provisioning-/Management-Key: alle Keys, Guthaben, Verwaltung (Alias `OPENROUTER_MANAGEMENT_KEY`) |
+| `LLM_CORE_EUR_KURS` | optional: fester Euro-Kurs (Euro je Dollar), sonst EZB-Kurs |
 | `ANTHROPIC_ADMIN_KEY` | optional: Admin-Key (`sk-ant-admin…`) für die Kosten der Organisation; ohne: nur die API-Keys `ANTHROPIC_API_KEY*`, gekürzt und ohne Verbrauch |
 
 1. Bei OpenRouter unter *Settings → Management Keys* (früher *Provisioning Keys*) einen Key anlegen.

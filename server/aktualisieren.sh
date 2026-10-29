@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Kosten-Konsole auf dem Server auf den Stand von GitHub (main) bringen (README „Konsole auf dem Server“):
+# Kosten-App auf dem Server auf den Stand von GitHub (main) bringen (README „Kosten-App auf dem Server“):
 #   bash aktualisieren.sh            holen, bauen, neu starten, prüfen
 #   bash aktualisieren.sh --immer    auch ohne neuen Commit bauen und neu starten
 # Bricht ab, wenn auf dem Server Dateien im Repo von Hand geändert sind (git pull nur „fast-forward“).

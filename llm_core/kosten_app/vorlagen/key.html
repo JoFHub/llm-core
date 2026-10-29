@@ -1,0 +1,54 @@
+{% extends "basis.html" %}
+{% block titel %}{{ s.name }} · Kosten{% endblock %}
+{% block inhalt %}
+<header class="kopf">
+  <a class="symbol zurueck" href="/" aria-label="Zurück zur Übersicht">‹</a>
+  <h1>{{ s.name }}</h1>
+</header>
+{% if meldung %}<p class="meldung" role="status">{{ meldung }}</p>{% endif %}
+{% if fehler %}<p class="hinweis rot" role="alert">{{ fehler }}</p>{% endif %}
+{% if s.fehler %}<p class="hinweis grau">{{ s.fehler }}</p>{% endif %}
+<section class="karte">
+  <dl>
+    <div><dt>Kennung</dt><dd class="text">{{ s.kennung or "–" }}</dd></div>
+    <div><dt>Status</dt><dd class="text"><span class="punkt {{ zeile.ampel }}" aria-hidden="true"></span>
+      {% if zeile.gesperrt %}gesperrt{% elif s.aktiv is none %}–{% else %}aktiv{% endif %}</dd></div>
+    <div><dt>heute</dt><dd>{{ eur(s.heute) }}</dd></div>
+    <div><dt>Monat</dt><dd>{{ eur(s.monat) }}</dd></div>
+    <div><dt>gesamt</dt><dd>{{ eur(s.verbrauch_gesamt) }}</dd></div>
+    <div><dt>Limit</dt><dd>{{ limit_text }}</dd></div>
+    {% if s.limit is not none %}
+    <div><dt>verbraucht</dt><dd>{{ eur(zeile.verbrauch) }} · {{ prozent(zeile.anteil) }}</dd></div>
+    {% endif %}
+  </dl>
+</section>
+{% if verwaltung %}
+<section class="karte">
+  <h2>Limit ändern</h2>
+  {% if kurs %}
+  <form method="post" action="/key/{{ zeile.schluessel | urlencode }}/limit" class="formular">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Limit in €
+      <input name="limit" inputmode="decimal" autocomplete="off" required
+             value="{{ eingabe.limit if 'limit' in eingabe else limit_vorschlag }}"></label>
+    <label>Zurücksetzen
+      <select name="reset">
+      {% for wert, text in RESETS.items() %}
+        <option value="{{ wert }}"{% if wert == (eingabe.reset or s.limit_reset or "never") %} selected{% endif %}>{{ text }}</option>
+      {% endfor %}
+      </select></label>
+    <button type="submit">Weiter …</button>
+  </form>
+  {% else %}
+  <p class="hinweis grau">Ohne Euro-Kurs kann das Limit nicht geändert werden.</p>
+  {% endif %}
+</section>
+<section class="karte">
+  <form method="post" action="/key/{{ zeile.schluessel | urlencode }}/sperren">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="{{ 'zweit' if zeile.gesperrt else 'gefahr' }}">
+      {{ "Entsperren …" if zeile.gesperrt else "Sperren …" }}</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

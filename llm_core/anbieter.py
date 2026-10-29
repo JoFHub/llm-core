@@ -40,6 +40,9 @@ PROVISIONING_ENV = ("OPENROUTER_PROVISIONING_KEY", "OPENROUTER_MANAGEMENT_KEY")
 ANTHROPIC_ADMIN_ENV = "ANTHROPIC_ADMIN_KEY"
 KEYRING_DIENST = "llm-core"
 
+# limit_reset für „Limit gilt insgesamt“ (OpenRouter: null); None heißt in limit_aendern „unverändert“
+NIE = "never"
+
 STANDARD_TIMEOUT = 10.0
 STANDARD_CACHE_TTL = 60.0
 
@@ -485,10 +488,11 @@ class OpenRouter:
 
     def limit_aendern(self, key_id: str, limit: float | None, *, bestaetigt: bool = False,
                       limit_reset: str | None = None) -> Aenderung:
-        """Limit setzen (USD); None entfernt das Limit. limit_reset: "daily"/"weekly"/"monthly"."""
+        """Limit setzen (USD); None entfernt das Limit. limit_reset: "daily"/"weekly"/"monthly", NIE (Limit gilt
+        insgesamt, entfernt ein Zurücksetzen) oder None (unverändert)."""
         body: dict[str, Any] = {"limit": limit}
         if limit_reset is not None:
-            body["limit_reset"] = limit_reset
+            body["limit_reset"] = None if limit_reset == NIE else limit_reset
         return self._patch("limit", key_id, body, bestaetigt)
 
     def key_aktivieren(self, key_id: str, aktiv: bool, *, bestaetigt: bool = False) -> Aenderung:

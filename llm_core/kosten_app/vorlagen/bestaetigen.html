@@ -1,0 +1,22 @@
+{% extends "basis.html" %}
+{% block titel %}Bestätigen · Kosten{% endblock %}
+{% block inhalt %}
+<header class="kopf">
+  <h1>{{ plan.titel }}</h1>
+</header>
+<section class="karte">
+  <dl>
+    <div><dt>vorher</dt><dd class="text">{{ plan.vorher }}</dd></div>
+    <div><dt>nachher</dt><dd class="text stark">{{ plan.nachher }}</dd></div>
+  </dl>
+  {% if plan.limit_usd is not none %}
+  <p class="leise">Gespeichert wird in Dollar zum heutigen Kurs: {{ kurs_text }}.</p>
+  {% endif %}
+  <form method="post" action="/bestaetigen" class="formular">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="plan" value="{{ plan_id }}">
+    <button type="submit" class="{{ 'gefahr' if plan.aktion == 'sperren' else '' }}">{{ plan.knopf }}</button>
+  </form>
+  <p><a class="knopf zweit" href="{{ zurueck }}">Abbrechen</a></p>
+</section>
+{% endblock %}
