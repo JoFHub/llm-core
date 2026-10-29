@@ -113,16 +113,14 @@ def kurzstatus_anthropic_zeilen(
     Organisation (Admin-API), Zahl der API-Keys. Ohne Ampel: Anthropic liefert je Key weder Verbrauch noch Limit."""
     zeilen = [f"berechnet: {heute_monat_zeile(heute, monat, monat_nr)}"]
     organisation = [s for s in keys if s.name == _anbieter.Anthropic.ORGANISATION]
-    api = [s for s in keys if s.name != _anbieter.Anthropic.ORGANISATION]
+    # Ohne API-Key kein Hinweis: auf dem Server bekommt die Konsole Fabulas Key bewusst nicht
+    api = [s for s in keys if s.name != _anbieter.Anthropic.ORGANISATION and not s.fehler]
     for s in organisation:
         if s.fehler:
             zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} Organisation: {s.fehler}")
         else:
             zeilen.append(f"Organisation: {heute_monat_zeile(s.heute, s.monat, monat_nr)}")
-    ohne_key = [s for s in api if s.fehler]
-    if ohne_key:
-        zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} {ohne_key[0].fehler} ({ohne_key[0].name})")
-    elif api:
+    if api:
         zeilen.append(f"{len(api)} {'API-Key' if len(api) == 1 else 'API-Keys'}")
     return zeilen
 

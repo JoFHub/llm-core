@@ -64,7 +64,7 @@ def test_openrouter_ist_startseite(at):
 def test_seitenleiste_zeigt_beide_anbieter_getrennt(at):
     sidebar = _sidebar(at)
     assert "**OpenRouter** · Memoria, Probatio" in sidebar
-    assert "**Anthropic** · Fabula" in sidebar and "kein Key (ANTHROPIC_API_KEY)" in sidebar
+    assert "**Anthropic** · Fabula" in sidebar and "kein Key" not in sidebar   # ohne API-Key kein Hinweis
 
 
 def test_anthropic_seite(anthropic):
@@ -73,7 +73,9 @@ def test_anthropic_seite(anthropic):
     links = [(b.proto.label, b.proto.url) for b in anthropic.get("link_button")]
     assert links == [("Dashboard", "https://platform.claude.com/usage")]
     assert "Fabula" in _hilfe(anthropic) and "Ampel" not in _hilfe(anthropic)
-    assert any("Kein Anthropic-Key" in i.value for i in anthropic.info)
+    # ohne API-Key weder Hinweis noch Tabelle (nur „Keine lokale Kosten-DB“ in Details lokal)
+    assert [i.value[:21] for i in anthropic.info] == ["Keine lokale Kosten-D"]
+    assert not anthropic.get("dataframe")
     monat = MONATSNAMEN[datetime.now(ZoneInfo("Europe/Berlin")).month - 1]
     assert [m.label for m in anthropic.metric] == ["heute · berechnet", f"{monat} · berechnet"]
     assert [m.value for m in anthropic.metric] == ["–", "–"]   # ohne Kosten-DB keine Zahl

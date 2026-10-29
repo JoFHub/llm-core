@@ -118,7 +118,7 @@ def test_kurzstatus_ohne_konto_und_keys():
 
 
 def test_kurzstatus_anthropic_zeilen():
-    from llm_core.ui import AMPEL_ZEICHEN, kurzstatus_anthropic_zeilen
+    from llm_core.ui import kurzstatus_anthropic_zeilen
     keys = [an.KeyStatus("anthropic", "ANTHROPIC_API_KEY_FABULA", kennung="sk-ant…ab12", limit_abfragbar=False),
             an.KeyStatus("anthropic", an.Anthropic.ORGANISATION, heute=1.0, monat=12.5, limit_abfragbar=False)]
     assert kurzstatus_anthropic_zeilen(keys, 0.45, 2.74, 10) == [
@@ -128,7 +128,7 @@ def test_kurzstatus_anthropic_zeilen():
     ]
     ohne = [an.KeyStatus("anthropic", "ANTHROPIC_API_KEY", limit_abfragbar=False, fehler="kein Key")]
     assert kurzstatus_anthropic_zeilen(ohne, None, None, 1) == [
-        "berechnet: heute – · Januar –", f"{AMPEL_ZEICHEN[an.GRAU]} kein Key (ANTHROPIC_API_KEY)"]
+        "berechnet: heute – · Januar –"]   # ohne API-Key kein Hinweis (Server)
 
 
 # -- Konsole: Start und lokale Details ---------------------------------------------

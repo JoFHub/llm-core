@@ -48,7 +48,8 @@ with button_bar("anthropic"):
 
 keys = an.Anthropic().keys()
 organisation = next((s for s in keys if s.name == an.Anthropic.ORGANISATION), None)
-api_keys = [s for s in keys if s is not organisation]
+# Ohne API-Key („kein Key“) kein Hinweis: auf dem Server bekommt die Konsole Fabulas Key bewusst nicht
+api_keys = [s for s in keys if s is not organisation and not s.fehler]
 
 uebersicht, lokal = st.tabs(REITER, key="an_reiter", on_change="rerun")
 
@@ -70,9 +71,7 @@ with uebersicht:
     elif organisation is not None:
         st.warning(g.md(f"Organisation (Admin-API): {organisation.fehler}"), icon=":material/warning:")
 
-    if not api_keys or any(s.fehler for s in api_keys):
-        st.info("Kein Anthropic-Key in der Umgebung (`ANTHROPIC_API_KEY*`).", icon=":material/info:")
-    else:
+    if api_keys:
         st.dataframe([{"Name": s.name, "Key": s.kennung} for s in api_keys], width="stretch", hide_index=True)
 
 # -- Details lokal --------------------------------------------------------------
