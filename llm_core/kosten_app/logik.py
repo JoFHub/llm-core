@@ -12,7 +12,7 @@ from datetime import datetime
 
 from llm_core import anbieter as an
 from llm_core.kosten_app.kurs import Kurs
-from llm_core.ui import MONATSNAMEN, betrag
+from llm_core.ui import MONATSNAMEN, betrag, eur  # eur: gleiche Umrechnung wie die Seitenleiste
 
 OPENROUTER_KONSOLE = "https://openrouter.ai/activity"
 ANTHROPIC_KONSOLE = "https://platform.claude.com/usage"
@@ -34,13 +34,6 @@ class Eingabefehler(ValueError):
 # ---------------------------------------------------------------------------
 # Format
 # ---------------------------------------------------------------------------
-
-def eur(usd: float | None, kurs: Kurs | None) -> str:
-    """USD-Betrag als Euro ('3,86 €'); ohne Kurs oder Wert '–'."""
-    if usd is None or kurs is None:
-        return "–"
-    return betrag(usd * kurs.wert, "€")
-
 
 def prozent(anteil: float | None) -> str:
     return "" if anteil is None else f"{round(anteil * 100)} %"

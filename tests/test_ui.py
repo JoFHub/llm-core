@@ -26,6 +26,7 @@ class Fest:
 def _sauber(monkeypatch):
     an.cache_leeren()
     monkeypatch.delenv("OPENROUTER_API_KEY_TEST", raising=False)
+    monkeypatch.setenv("LLM_CORE_EUR_KURS", "2")   # fester Kurs, ohne Netz: 1 $ = 2 € (glatte Zahlen)
 
 
 def test_llm_core_haengt_nicht_von_streamlit_ab():
@@ -48,7 +49,7 @@ def test_zeilen_mit_limit(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY_TEST", KEY)
     fest = Fest(an.KeyStatus("openrouter", "x", limit=10.0, rest=1.5, verbrauch_gesamt=8.5, heute=0.5, monat=6.0))
     zeilen = kosten_zeilen("OPENROUTER_API_KEY_TEST", adapter=fest)
-    assert zeilen == [":orange[:material/warning:] 8,50 $ von 10,00 $ (85 %)"]
+    assert zeilen == [":orange[:material/warning:] 17,00 € von 20,00 € (85 %)"]
     assert fest.aufrufe == [KEY]
     assert not any("a1b2" in z or KEY in z for z in zeilen)   # nichts vom Key im HTML
 
@@ -58,10 +59,10 @@ def test_zeilen_ohne_limit_und_monatslimit(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY_TEST", KEY)
     zeilen = kosten_zeilen("OPENROUTER_API_KEY_TEST",
                            adapter=Fest(an.KeyStatus("openrouter", "x", verbrauch_gesamt=3.0, heute=0, monat=1)))
-    assert zeilen[0] == ":red[:material/error:] 3,00 $ · ohne Limit"
+    assert zeilen[0] == ":red[:material/error:] 6,00 € · ohne Limit"
     zeilen = kosten_zeilen("OPENROUTER_API_KEY_TEST", adapter=Fest(an.KeyStatus(
         "openrouter", "x", limit=10.0, rest=9.0, verbrauch_gesamt=50.0, limit_reset="monthly")))
-    assert zeilen[0] == ":green[:material/check_circle:] 1,00 $ von 10,00 $ Monat (10 %)"
+    assert zeilen[0] == ":green[:material/check_circle:] 2,00 € von 20,00 € Monat (10 %)"
 
 
 def test_zeilen_fehler_ohne_schaetzung(monkeypatch):
@@ -115,6 +116,17 @@ def test_berechnet_zeilen_heute_und_monat(monkeypatch, tmp_path):
 
     jetzt = datetime(2026, 10, 29, 8, 0, tzinfo=ZoneInfo("Europe/Berlin"))
     assert ui.berechnet_zeilen("anthropic", tag="fabula", jetzt=jetzt) == [
-        "heute 0,45 $ · Oktober 2,55 $"]
+        "heute 0,90 € · Oktober 5,10 €"]
     assert cost_tracker.cost_since(datetime(2026, 10, 1, tzinfo=timezone.utc)) == 6.55
 
+
+
+def test_zeilen_nie_dollar_ohne_kurs(monkeypatch):
+    """Nur Euro (wie die Kosten-App): ohne Kurs der Anteil am Limit, kein Dollar-Betrag."""
+    from llm_core.ui import heute_monat_zeile, kosten_zeilen
+    monkeypatch.setenv("OPENROUTER_API_KEY_TEST", KEY)
+    fest = Fest(an.KeyStatus("openrouter", "x", limit=10.0, rest=1.5, verbrauch_gesamt=8.5))
+    zeilen = kosten_zeilen("OPENROUTER_API_KEY_TEST", adapter=fest, kurs=None)
+    assert zeilen == [":orange[:material/warning:] 85 % des Limits (kein Euro-Kurs)"]
+    assert heute_monat_zeile(0.45, 2.55, 10, kurs=None) == "heute – · Oktober – (kein Euro-Kurs)"
+    assert not any("$" in z for z in zeilen)

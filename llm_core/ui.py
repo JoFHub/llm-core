@@ -10,6 +10,10 @@ aus der Kosten-DB berechneten Kosten:
     from llm_core.ui import kosten_seitenleiste_berechnet
     kosten_seitenleiste_berechnet(provider="anthropic", titel="Kosten Fabula", tag="fabula")
 
+Beträge nur in Euro (wie die Kosten-App): Der Anbieter rechnet in USD, umgerechnet wird zum EZB-Kurs
+(`kosten_app.kurs`, höchstens zweimal am Tag abgefragt; fest mit `LLM_CORE_EUR_KURS=0,92`). Ohne Kurs nie Dollar
+als Ersatz, sondern nur der Anteil am Limit bzw. ein Hinweis.
+
 Streamlit ist optional (`pip install "llm-core[ui]"`) und wird erst im Aufruf importiert. Die Zeilen
 entstehen im Server-Prozess; im HTML steht nur der Text, nie ein Key (auch nicht gekürzt).
 """
@@ -21,6 +25,11 @@ from zoneinfo import ZoneInfo
 
 from llm_core import anbieter as _anbieter
 from llm_core import cost_tracker as _cost_tracker
+from llm_core.kosten_app.kurs import Kurs, KursQuelle
+
+# Euro-Kurs mit Zwischenspeicher im Prozess (eine Abfrage für alle Sitzungen einer App)
+_KURS = KursQuelle()
+_OHNE_KURS = "kein Euro-Kurs"
 
 # Material-Symbole in Streamlit-Markdown statt farbiger Emojis (GUI-Standard wie Memoria)
 AMPEL_ZEICHEN = {
@@ -40,10 +49,23 @@ def betrag(usd: float | None, waehrung: str = "$") -> str:
     return f"{zahl} {waehrung}"
 
 
+def eur(usd: float | None, kurs: Kurs | None) -> str:
+    """USD-Betrag des Anbieters als Euro ('3,86 €'); ohne Kurs oder Wert '–'."""
+    if usd is None or kurs is None:
+        return "–"
+    return betrag(usd * kurs.wert, "€")
+
+
+def _kurs(kurs: "Kurs | None | bool") -> Kurs | None:
+    """kurs=True (Standard): aktueller Kurs aus dem Zwischenspeicher; sonst der übergebene (Tests)."""
+    return _KURS.kurs() if kurs is True else kurs or None
+
+
 def kosten_zeilen(
     key_env: str = "OPENROUTER_API_KEY",
     adapter: "_anbieter.OpenRouter | None" = None,
     schwellen: "_anbieter.Schwellen | None" = None,
+    kurs: "Kurs | None | bool" = True,
 ) -> list[str]:
     """Die Zeilen des Bausteins (ohne Streamlit, testbar).
 
@@ -57,14 +79,17 @@ def kosten_zeilen(
         if not status.fehler:
             zeichen = AMPEL_ZEICHEN[_anbieter.ampel(status, schwellen)]
             verbraucht = status.verbrauch_im_limit
+            k = _kurs(kurs)
             if status.limit is None:
-                zeilen.append(f"{zeichen} {betrag(verbraucht)} · ohne Limit")
+                zeilen.append(f"{zeichen} {eur(verbraucht, k)} · ohne Limit" if k
+                              else f"{zeichen} ohne Limit ({_OHNE_KURS})")
             else:
                 anteil = _anbieter.anteil(status) or 0.0
                 zeitraum = {"daily": " heute", "weekly": " Woche", "monthly": " Monat"}.get(
                     status.limit_reset or "", "")
-                zeilen.append(f"{zeichen} {betrag(verbraucht)} von {betrag(status.limit)}{zeitraum} "
-                              f"({round(anteil * 100)} %)")
+                zeilen.append(f"{zeichen} {eur(verbraucht, k)} von {eur(status.limit, k)}{zeitraum} "
+                              f"({round(anteil * 100)} %)" if k
+                              else f"{zeichen} {round(anteil * 100)} % des Limits{zeitraum} ({_OHNE_KURS})")
             return zeilen
         zeilen.append(f"{AMPEL_ZEICHEN[_anbieter.GRAU]} Anbieter: {status.fehler}")
     else:
@@ -83,7 +108,6 @@ def kosten_seitenleiste(
 
     zeilen = kosten_zeilen(key_env, adapter=adapter, schwellen=schwellen)
     with st.sidebar:
-        # "$" würde Streamlit als Formel lesen
         text = "  \n".join(zeilen).replace("$", "\\$")
         st.caption(f"**{titel}**  \n{text}" if titel else text)
     return zeilen
@@ -93,9 +117,13 @@ MONATSNAMEN = ("Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "Au
                "September", "Oktober", "November", "Dezember")
 
 
-def heute_monat_zeile(heute: float | None, monat: float | None, monat_nr: int) -> str:
-    """'heute 0,45 $ · Oktober 2,74 $' (Seitenleiste der Apps)."""
-    return f"heute {betrag(heute)} · {MONATSNAMEN[monat_nr - 1]} {betrag(monat)}"
+def heute_monat_zeile(heute: float | None, monat: float | None, monat_nr: int,
+                      kurs: "Kurs | None | bool" = True) -> str:
+    """'heute 0,41 € · Oktober 2,49 €' (Seitenleiste der Apps; Beträge in USD, angezeigt in Euro)."""
+    k = _kurs(kurs)
+    if not k:
+        return f"heute – · {MONATSNAMEN[monat_nr - 1]} – ({_OHNE_KURS})"
+    return f"heute {eur(heute, k)} · {MONATSNAMEN[monat_nr - 1]} {eur(monat, k)}"
 
 
 def berechnet_zeilen(
@@ -103,16 +131,17 @@ def berechnet_zeilen(
     tag: str | None = None,
     zeitzone: str = "Europe/Berlin",
     jetzt: datetime | None = None,
+    kurs: "Kurs | None | bool" = True,
 ) -> list[str]:
     """Zeile des Bausteins für berechnete Kosten (ohne Streamlit, testbar): heute und
     laufender Monat aus der Kosten-DB dieses Rechners (Token-Zahlen des Anbieters mal
-    Preisliste), z. B. "heute 0,45 $ · Oktober 2,74 $"."""
+    Preisliste), in Euro umgerechnet, z. B. "heute 0,41 € · Oktober 2,49 €"."""
     jetzt = (jetzt or datetime.now(ZoneInfo(zeitzone))).astimezone(ZoneInfo(zeitzone))
     tag_beginn = jetzt.replace(hour=0, minute=0, second=0, microsecond=0)
     monat_beginn = tag_beginn.replace(day=1)
     heute = _cost_tracker.cost_since(tag_beginn, provider=provider, tag=tag)
     monat = _cost_tracker.cost_since(monat_beginn, provider=provider, tag=tag)
-    return [heute_monat_zeile(heute, monat, jetzt.month)]
+    return [heute_monat_zeile(heute, monat, jetzt.month, kurs)]
 
 
 def kosten_seitenleiste_berechnet(
@@ -127,7 +156,6 @@ def kosten_seitenleiste_berechnet(
 
     zeilen = berechnet_zeilen(provider, tag=tag, zeitzone=zeitzone)
     with st.sidebar:
-        # "$" würde Streamlit als Formel lesen
         text = "  \n".join(zeilen).replace("$", "\\$")
         st.caption(f"**{titel}**  \n{text}" if titel else text)
     return zeilen

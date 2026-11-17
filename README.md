@@ -211,8 +211,10 @@ from llm_core.ui import kosten_seitenleiste
 kosten_seitenleiste(key_env="OPENROUTER_API_KEY_VISIBILIA", titel="Kosten Visibilia")
 ```
 
-Ein bis zwei kleine Zeilen: `:green[:material/check_circle:] 4,12 $ von 10,00 $ (41 %)`
-(Ampel als farbiges Material-Symbol); heute/Monat stehen nur in der Kosten-App. Gezeigt werden
+Ein bis zwei kleine Zeilen: `:green[:material/check_circle:] 3,71 € von 9,08 € (41 %)`
+(Ampel als farbiges Material-Symbol). **Nur Euro** wie in der Kosten-App: Der Anbieter rechnet in USD, umgerechnet
+wird zum EZB-Kurs (`kosten_app.kurs`, fest mit `LLM_CORE_EUR_KURS`); ohne Kurs kein Dollar-Betrag, sondern nur der
+Anteil am Limit (`85 % des Limits (kein Euro-Kurs)`); heute/Monat stehen nur in der Kosten-App. Gezeigt werden
 die Kosten je Key, wie der Anbieter sie abrechnet (über alle Rechner); ohne Key oder bei Fehler eine graue Zeile
 (`kein Key (…)` bzw. die Fehlermeldung), keine Schätzung aus der Kosten-DB. Der Key bleibt im
 Server-Prozess; ins HTML kommt nur der Text. `kosten_zeilen(...)` liefert dieselben Zeilen ohne Streamlit.
@@ -225,7 +227,7 @@ der Baustein mit berechneten Kosten aus der Kosten-DB dieses Rechners (Token-Zah
 from llm_core.ui import kosten_seitenleiste_berechnet
 
 kosten_seitenleiste_berechnet(provider="anthropic", titel="Kosten Fabula", tag="fabula")
-# heute 0,45 $ · Oktober 2,74 $
+# heute 0,41 € · Oktober 2,49 €
 ```
 
 `berechnet_zeilen(...)` liefert dieselben Zeilen ohne Streamlit. Kein Limit, keine Ampel: die Obergrenze setzt man
