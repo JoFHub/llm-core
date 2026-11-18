@@ -163,6 +163,7 @@ def record(
     cache_read_tokens: int = 0,
     cost_usd_override: float | None = None,
     tag: str | None = None,
+    batch: bool = False,
 ) -> None:
     """Speichert einen LLM-Aufruf mit berechneten Kosten. Niemals blockierend.
 
@@ -174,10 +175,16 @@ def record(
     Token-Spalten werden trotzdem unveraendert gespeichert (Auswertung/
     Transparenz).
 
-    tag: Zuordnung des Aufrufs; ohne Angabe die von set_tag_source()."""
+    tag: Zuordnung des Aufrufs; ohne Angabe die von set_tag_source().
+
+    batch: ueber die Batch-API (Anthropic Message Batches) -- die Haelfte des
+    Preises, auf Ein- und Ausgabe samt Cache (platform.claude.com, Pricing,
+    „Batch processing“). Gilt nur fuer die Schaetzung, nicht fuer
+    cost_usd_override."""
     cost = (
         cost_usd_override if cost_usd_override is not None
         else _cost_usd(model, prompt_tokens, completion_tokens, cache_creation_tokens, cache_read_tokens)
+        * (0.5 if batch else 1.0)
     )
     ts = datetime.now(timezone.utc).isoformat()
     try:

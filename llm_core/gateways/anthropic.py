@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TypeVar
+from dataclasses import dataclass
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
@@ -34,6 +35,34 @@ def _track(model: str, usage) -> None:
         )
     except Exception:
         pass
+
+
+def _track_batch(model: str, usage) -> None:
+    """Wie _track, zum Batch-Preis (die Haelfte)."""
+    try:
+        from llm_core.cost_tracker import record
+        record(
+            "anthropic", model,
+            usage.input_tokens, usage.output_tokens,
+            cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+            cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+            batch=True,
+        )
+    except Exception:
+        pass
+
+
+@dataclass
+class BatchErgebnis:
+    """Ergebnis einer Batch-Anfrage. art: "succeeded" | "errored" | "canceled" | "expired" (wie die API);
+    text, stop_reason und usage nur bei "succeeded", fehler sonst. message: die Antwort der API (fuer Aufrufer,
+    die mehr brauchen)."""
+    art: str
+    text: str = ""
+    stop_reason: str | None = None
+    usage: Any = None
+    fehler: str | None = None
+    message: Any = None
 
 
 def _cacheable_system(system: str) -> str | list[dict]:
@@ -105,6 +134,48 @@ class AnthropicGateway(LLMGateway):
 
     def _effort_kwargs(self) -> dict:
         return {"output_config": {"effort": self._effort}} if self._effort else {}
+
+    # ── Message Batches (halber Preis, Ergebnis meist binnen einer Stunde, spaetestens nach 24 h) ──────────
+    # Eine Anfrage je Batch: der Aufrufer (Fabula, Buchlauf) braucht jedes Ergebnis fuer die naechste Anfrage.
+    # Stand und Ergebnis haengen nur an der batch_id -- ein neuer Prozess kann sie nach einem Neustart abholen.
+
+    def batch_abschicken(self, *, system: str, user: str, model_name: str, max_tokens: int,
+                         custom_id: str = "anfrage") -> str:
+        """Eine Anfrage wie chat() als Batch einreichen; gibt die batch_id zurueck. Der System-Prompt bekommt
+        denselben Cache-Breakpoint wie in chat() (_cacheable_system)."""
+        params = {
+            "model": model_name,
+            "max_tokens": max_tokens,
+            "system": _cacheable_system(system),
+            "messages": [{"role": "user", "content": user}],
+            **self._effort_kwargs(),
+        }
+        batch = self._client.messages.batches.create(requests=[{"custom_id": custom_id, "params": params}])
+        return batch.id
+
+    def batch_stand(self, batch_id: str) -> str:
+        """processing_status der API: "in_progress", "canceling" oder "ended"."""
+        return self._client.messages.batches.retrieve(batch_id).processing_status
+
+    def batch_ergebnis(self, batch_id: str, model_name: str) -> BatchErgebnis | None:
+        """Ergebnis der (ersten) Anfrage, None solange der Batch laeuft. Bucht die Kosten zum Batch-Preis."""
+        if self.batch_stand(batch_id) != "ended":
+            return None
+        for eintrag in self._client.messages.batches.results(batch_id):
+            ergebnis = eintrag.result
+            if ergebnis.type != "succeeded":
+                fehler = getattr(ergebnis, "error", None)
+                return BatchErgebnis(art=ergebnis.type, fehler=str(fehler) if fehler is not None else ergebnis.type)
+            msg = ergebnis.message
+            _track_batch(getattr(msg, "model", None) or model_name, msg.usage)
+            if msg.stop_reason == "max_tokens":
+                logger.warning("Batch-Antwort von %s abgeschnitten", model_name)
+            return BatchErgebnis(art="succeeded", text=_text(msg), stop_reason=msg.stop_reason, usage=msg.usage,
+                                 message=msg)
+        return BatchErgebnis(art="errored", fehler="Batch ohne Ergebnis")
+
+    def batch_abbrechen(self, batch_id: str) -> None:
+        self._client.messages.batches.cancel(batch_id)
 
     def chat(
         self,
