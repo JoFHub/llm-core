@@ -63,10 +63,70 @@ def test_batch_ergebnis_laeuft_fertig_und_fehler():
         assert runner.batch_ergebnis("b").art == "expired"
 
 
-def test_kein_batch_bei_openrouter():
+
+
+# ── OpenRouter ────────────────────────────────────────────────────────────────
+
+def _or_runner(effort="medium"):
+    from llm_core import LLMBackend, LLMConfig, LLMRunner
+    return LLMRunner(LLMConfig(backend=LLMBackend.OPENROUTER, model="openai/gpt-6.1-terra", max_tokens=64000,
+                               api_key="dummy", effort=effort, temperature=0.9))
+
+
+def _or_fertig(text="Kapitel", finish="stop"):
+    return {"id": "batch_1", "status": "completed", "request_counts": {"total": 1, "completed": 1, "failed": 0},
+            "results": [{"id": "batch_req_1", "custom_id": "kapitel-1", "error": None, "response": {
+                "status_code": 200, "request_id": "r1", "body": {
+                    "model": "openai/gpt-6.1-terra",
+                    "choices": [{"message": {"content": text}, "finish_reason": finish}],
+                    "usage": {"prompt_tokens": 1000, "completion_tokens": 500, "cost": 0.0016,
+                              "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
+                              "completion_tokens_details": {"reasoning_tokens": 100}}}}}]}
+
+
+def test_openrouter_batch_abschicken():
+    with patch("openai.OpenAI") as MockOpenAI:
+        client = MockOpenAI.return_value
+        client.post.return_value = {"id": "batch_1", "status": "validating"}
+        runner = _or_runner()
+        assert runner.kann_batch
+        assert runner.batch_abschicken("sys", "u", custom_id="schreiben-1") == "batch_1"
+        pfad, = client.post.call_args.args
+        body = client.post.call_args.kwargs["body"]
+        assert pfad == "/batches"
+        assert list(body)[:2] == ["endpoint", "model"]  # vor requests, sonst 400
+        assert (body["endpoint"], body["model"]) == ("/v1/chat/completions", "openai/gpt-6.1-terra")
+        anfrage = body["requests"][0]
+        assert anfrage["custom_id"] == "schreiben-1"
+        b = anfrage["body"]
+        assert b["reasoning"] == {"effort": "medium"} and "temperature" not in b and b["max_tokens"] == 64000
+        assert b["messages"][0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+        assert b["messages"][1] == {"role": "user", "content": "u"}
+
+
+def test_openrouter_batch_ergebnis():
+    from llm_core.cost_tracker import total_cost
+    with patch("openai.OpenAI") as MockOpenAI:
+        client = MockOpenAI.return_value
+        runner = _or_runner(effort=None)
+        client.get.return_value = {"id": "batch_1", "status": "in_progress"}
+        assert runner.batch_ergebnis("batch_1") is None
+        client.get.return_value = _or_fertig(finish="length")
+        e = runner.batch_ergebnis("batch_1")
+        assert (e.art, e.text, e.stop_reason) == ("succeeded", "Kapitel", "length")
+        assert e.usage.prompt_tokens == 1000 and e.usage.completion_tokens_details.reasoning_tokens == 100
+        assert total_cost(days=1) == pytest.approx(0.0016)  # Ist-Preis von OpenRouter, schon zum Batch-Preis
+        client.get.return_value = {"id": "batch_1", "status": "expired", "error": None, "results": []}
+        assert runner.batch_ergebnis("batch_1").art == "expired"
+        fehler = _or_fertig()
+        fehler["results"][0].update(response=None, error={"type": "x", "message": "kaputt"})
+        client.get.return_value = fehler
+        e = runner.batch_ergebnis("batch_1")
+        assert (e.art, e.fehler) == ("errored", "kaputt")
+
+
+def test_kein_batch_bei_mistral():
     from llm_core import LLMBackend, LLMConfig, LLMRunner
     with patch("openai.OpenAI"):
-        runner = LLMRunner(LLMConfig(backend=LLMBackend.OPENROUTER, model="x", api_key="d"))
+        runner = LLMRunner(LLMConfig(backend=LLMBackend.MISTRAL, model="m", api_key="d"))
     assert not runner.kann_batch
-    with pytest.raises(NotImplementedError):
-        runner.batch_abschicken("s", "u")

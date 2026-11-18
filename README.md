@@ -73,10 +73,12 @@ ignorieren ihn). Mit `effort` schickt OpenRouter keine `temperature` mit (Claude
 ab). `call_chat` setzt bei OpenRouter wie bei Anthropic einen Cache-Breakpoint auf den System-Prompt; Timeout bei
 OpenRouter 30 min (ohne Streaming, lange Antworten).
 
-**Message Batches** (seit 0.5.0, nur Anthropic): `runner.batch_abschicken(system, user)` → batch_id,
+**Batches** (seit 0.5.0 Anthropic, seit 0.6.0 auch OpenRouter): `runner.batch_abschicken(system, user)` → batch_id,
 `runner.batch_ergebnis(batch_id)` → `None` solange der Batch läuft, sonst `BatchErgebnis` (art, text, stop_reason,
 usage, fehler); `runner.kann_batch`. Halber Preis, gebucht mit `cost_tracker.record(batch=True)`. Eine Anfrage je
-Batch; Stand und Ergebnis hängen nur an der batch_id, ein neuer Prozess kann sie abholen.
+Batch; Stand und Ergebnis hängen nur an der batch_id, ein neuer Prozess kann sie abholen. Bei OpenRouter
+(`POST /api/v1/batches`) bucht `batch_ergebnis` den Ist-Preis aus `usage.cost`; Wartezeit je nach Anbieter
+(Anthropic meist Minuten, OpenAI über OpenRouter auch Stunden, höchstens 24 h).
 
 ## API-Überblick
 

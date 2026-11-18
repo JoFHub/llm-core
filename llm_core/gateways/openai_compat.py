@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import logging
 import os
+from types import SimpleNamespace
 
 from .base import LLMGateway
 from .._message_utils import tool_to_openai, to_openai_messages, from_openai_response
@@ -87,6 +88,20 @@ def _text(resp) -> str:
     aufrufe.py) die fertige Antwort samt finish_reason sehen koennen. content ist None, wenn der Provider (z.B.
     Gemini via OpenRouter) nur einen leeren/verweigerten Turn liefert -- Aufrufer erwarten einen String."""
     return resp.choices[0].message.content or ""
+
+
+def _als_objekt(wert):
+    """JSON (dict/list) rekursiv als Objekt mit Attributen -- die usage aus einem Batch-Ergebnis von OpenRouter
+    kommt als dict, _track und Aufrufer lesen sie wie die usage des openai-SDK per getattr."""
+    if isinstance(wert, dict):
+        return SimpleNamespace(**{k: _als_objekt(v) for k, v in wert.items()})
+    if isinstance(wert, list):
+        return [_als_objekt(v) for v in wert]
+    return wert
+
+
+# Batch bei OpenRouter (openrouter.ai/docs/batch-quickstart): noch laufend bzw. endgültig
+_BATCH_LAEUFT = ("validating", "in_progress", "finalizing", "cancelling")
 
 
 def _cache_key_kwargs(provider: str, conversation_id: str | None) -> dict:
@@ -178,6 +193,72 @@ class OpenAICompatGateway(LLMGateway):
         # SDK-Grenze von 10 min reicht nicht sicher (bei Anthropic direkt streamt gateways/anthropic.py)
         timeout = {"timeout": 1800.0} if provider == "openrouter" else {}
         self._client = _openai.OpenAI(api_key=key, base_url=resolved_base_url, **timeout)
+
+    # ── Batch (nur OpenRouter, POST /api/v1/batches; halber Preis, meist binnen Minuten, höchstens 24 h) ──────
+    # Eine Anfrage je Batch, im Chat-Format. Modell mit dem normalen Namen (ohne „:batch“); ein Modell ohne
+    # Batch-Variante lehnt OpenRouter mit 400 ab. Die Ergebnisse stehen in der Antwort auf GET /batches/{id}.
+    # Die Kosten (usage.cost) liefert OpenRouter schon zum Batch-Preis -- _track bucht sie unverändert.
+
+    @property
+    def kann_batch(self) -> bool:
+        return self._provider == "openrouter"
+
+    def batch_abschicken(self, *, system: str, user: str, model_name: str, max_tokens: int,
+                         custom_id: str = "anfrage", temperature: float | None = None) -> str:
+        if not self.kann_batch:
+            raise NotImplementedError(f"Batch gibt es hier nur bei OpenRouter, nicht bei {self._provider}.")
+        body: dict = {
+            "messages": [{"role": "system", "content": _cacheable_system_or(system)},
+                         {"role": "user", "content": user}],
+            "max_tokens": max_tokens,
+        }
+        kwargs = self._kwargs(temperature if temperature is not None else 1.0)
+        if "temperature" in kwargs and temperature is not None:
+            body["temperature"] = kwargs["temperature"]
+        body.update(kwargs.get("extra_body") or {})
+        # Reihenfolge laut Doku: endpoint und model vor requests, sonst 400
+        antwort = self._client.post("/batches", cast_to=object, body={
+            "endpoint": "/v1/chat/completions", "model": model_name,
+            "requests": [{"custom_id": custom_id, "body": body}]})
+        return antwort["id"]
+
+    def batch_stand(self, batch_id: str) -> str:
+        """validating, in_progress, finalizing, completed, failed, expired, cancelling, cancelled."""
+        return self._client.get(f"/batches/{batch_id}", cast_to=object)["status"]
+
+    def batch_ergebnis(self, batch_id: str, model_name: str):
+        """Wie AnthropicGateway.batch_ergebnis: None solange der Batch läuft, sonst BatchErgebnis (art
+        "succeeded" oder der Grund). stop_reason ist hier die finish_reason ("stop", "length", …)."""
+        from .anthropic import BatchErgebnis
+        stand = self._client.get(f"/batches/{batch_id}", cast_to=object)
+        status = stand.get("status")
+        if status in _BATCH_LAEUFT:
+            return None
+        if status != "completed":
+            fehler = (stand.get("error") or {}).get("message") if isinstance(stand.get("error"), dict) else None
+            return BatchErgebnis(art=status or "errored", fehler=fehler or status)
+        eintraege = stand.get("results") or []
+        if not eintraege:
+            return BatchErgebnis(art="errored", fehler="Batch ohne Ergebnis")
+        eintrag = eintraege[0]
+        antwort = eintrag.get("response") or {}
+        if eintrag.get("error") or not antwort or (antwort.get("status_code") or 200) >= 300:
+            fehler = eintrag.get("error") or {}
+            text = fehler.get("message") if isinstance(fehler, dict) else str(fehler)
+            return BatchErgebnis(art="errored", fehler=text or f"HTTP {antwort.get('status_code')}")
+        body = antwort.get("body") or {}
+        wahl = (body.get("choices") or [{}])[0]
+        usage = _als_objekt(body.get("usage") or stand.get("usage")) or None
+        used_model = body.get("model") or model_name
+        _track(self._provider, used_model, usage)
+        grund = wahl.get("finish_reason")
+        if grund == "length":
+            logger.warning("Batch-Antwort von %s abgeschnitten", used_model)
+        return BatchErgebnis(art="succeeded", text=((wahl.get("message") or {}).get("content") or ""),
+                             stop_reason=grund, usage=usage, message=body)
+
+    def batch_abbrechen(self, batch_id: str) -> None:
+        raise NotImplementedError("OpenRouter kennt kein Abbrechen eines Batches (nur Löschen, wenn er fertig ist).")
 
     def _reasoning(self) -> bool:
         return self._provider == "openrouter" and bool(self._effort)

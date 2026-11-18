@@ -139,8 +139,10 @@ class AnthropicGateway(LLMGateway):
     # Eine Anfrage je Batch: der Aufrufer (Fabula, Buchlauf) braucht jedes Ergebnis fuer die naechste Anfrage.
     # Stand und Ergebnis haengen nur an der batch_id -- ein neuer Prozess kann sie nach einem Neustart abholen.
 
+    kann_batch = True
+
     def batch_abschicken(self, *, system: str, user: str, model_name: str, max_tokens: int,
-                         custom_id: str = "anfrage") -> str:
+                         custom_id: str = "anfrage", temperature: float | None = None) -> str:
         """Eine Anfrage wie chat() als Batch einreichen; gibt die batch_id zurueck. Der System-Prompt bekommt
         denselben Cache-Breakpoint wie in chat() (_cacheable_system)."""
         params = {

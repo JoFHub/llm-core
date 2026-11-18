@@ -146,18 +146,20 @@ class LLMRunner:
     # ── Batch (nur Anthropic) ──────────────────────────────────────────────────
     @property
     def kann_batch(self) -> bool:
-        return hasattr(self._gateway, "batch_abschicken")
+        """Anthropic direkt und OpenRouter (s. die Gateways)."""
+        return bool(getattr(self._gateway, "kann_batch", False))
 
     def _batch_gateway(self):
         if not self.kann_batch:
-            raise NotImplementedError(f"Batch gibt es nur bei Anthropic, nicht bei {self._config.backend.value}.")
+            raise NotImplementedError(f"Batch gibt es nur bei Anthropic und OpenRouter, nicht bei "
+                                      f"{self._config.backend.value}.")
         return self._gateway
 
     def batch_abschicken(self, system: str, user: str, custom_id: str = "anfrage") -> str:
         """Eine Anfrage wie call_chat als Message Batch (halber Preis) -> batch_id."""
         return self._batch_gateway().batch_abschicken(
             system=system, user=user, model_name=self._config.model, max_tokens=self._config.max_tokens,
-            custom_id=custom_id)
+            custom_id=custom_id, temperature=self._config.temperature)
 
     def batch_ergebnis(self, batch_id: str):
         """BatchErgebnis, sobald der Batch fertig ist, sonst None (gateways.anthropic.BatchErgebnis)."""
