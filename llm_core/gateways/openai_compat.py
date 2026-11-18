@@ -82,6 +82,13 @@ def _track(provider: str, model: str, usage) -> None:
         pass
 
 
+def _text(resp) -> str:
+    """Text der ersten Antwort -- eigene Funktion wie gateways/anthropic.py::_text, damit Aufrufer (Fabula,
+    aufrufe.py) die fertige Antwort samt finish_reason sehen koennen. content ist None, wenn der Provider (z.B.
+    Gemini via OpenRouter) nur einen leeren/verweigerten Turn liefert -- Aufrufer erwarten einen String."""
+    return resp.choices[0].message.content or ""
+
+
 def _cache_key_kwargs(provider: str, conversation_id: str | None) -> dict:
     """Mistral cached Prompt-Praefixe ueber einen stabilen `prompt_cache_key`
     (Top-Level-Requestfeld, kein Message-Format wie bei Anthropic/OpenRouter
@@ -92,9 +99,9 @@ def _cache_key_kwargs(provider: str, conversation_id: str | None) -> dict:
     unten) -- s. openrouter.ai/docs/features/prompt-caching. Beides als
     extra_body, da kein Standardparameter der openai-SDK."""
     if provider == "mistral" and conversation_id:
-        return {"extra_body": {"prompt_cache_key": conversation_id}}
+        return {"prompt_cache_key": conversation_id}
     if provider == "openrouter" and conversation_id:
-        return {"extra_body": {"session_id": conversation_id}}
+        return {"session_id": conversation_id}
     return {}
 
 
@@ -147,11 +154,15 @@ class OpenAICompatGateway(LLMGateway):
         base_url: str | None = None,
         api_key_env: str | None = None,
         api_key: str | None = None,
+        effort: str | None = None,
     ) -> None:
         if not _AVAILABLE:
             raise ImportError("pip install openai")
 
         self._provider = provider
+        # Denktiefe (low … high), wie output_config.effort bei Anthropic; nur OpenRouter reicht sie weiter
+        # (reasoning.effort, s. openrouter.ai/docs/use-cases/reasoning-tokens), Mistral/OpenAI ignorieren sie
+        self._effort = effort
         defaults = _PROVIDER_DEFAULTS.get(provider, _PROVIDER_DEFAULTS["openai"])
         resolved_base_url = base_url or defaults["base_url"]
         resolved_key_env = api_key_env or defaults["api_key_env"]
@@ -163,7 +174,24 @@ class OpenAICompatGateway(LLMGateway):
                 f"Setze die Umgebungsvariable {resolved_key_env}."
             )
 
-        self._client = _openai.OpenAI(api_key=key, base_url=resolved_base_url)
+        # OpenRouter: ein Romankapitel samt Denkspur ohne Streaming dauert leicht mehrere Minuten -- die
+        # SDK-Grenze von 10 min reicht nicht sicher (bei Anthropic direkt streamt gateways/anthropic.py)
+        timeout = {"timeout": 1800.0} if provider == "openrouter" else {}
+        self._client = _openai.OpenAI(api_key=key, base_url=resolved_base_url, **timeout)
+
+    def _reasoning(self) -> bool:
+        return self._provider == "openrouter" and bool(self._effort)
+
+    def _kwargs(self, temperature: float, conversation_id: str | None = None) -> dict:
+        """temperature und extra_body (reasoning, Cache-Schluessel) fuer create(). Mit reasoning ohne temperature:
+        Anthropic lehnt bei eingeschaltetem Denken jede Temperatur ausser 1 ab, OpenAIs Reasoning-Modelle jede."""
+        extra = _cache_key_kwargs(self._provider, conversation_id)
+        if self._reasoning():
+            extra = {**extra, "reasoning": {"effort": self._effort}}
+        kwargs: dict = {} if self._reasoning() else {"temperature": temperature}
+        if extra:
+            kwargs["extra_body"] = extra
+        return kwargs
 
     def chat(
         self,
@@ -175,23 +203,27 @@ class OpenAICompatGateway(LLMGateway):
         max_tokens: int,
         json_mode: bool = False,
     ) -> tuple[str, str]:
-        kwargs: dict = {}
+        kwargs = self._kwargs(temperature)
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
+        # OpenRouter: Cache-Breakpoint auf den System-Prompt wie bei Anthropic direkt (gateways/anthropic.py
+        # ::chat) -- fuer Claude-Modelle via OpenRouter sonst gar kein Cache
+        system_content = _cacheable_system_or(system) if self._provider == "openrouter" else system
 
         resp = self._client.chat.completions.create(
             model=model_name,
-            temperature=temperature,
             max_tokens=max_tokens,
             messages=[
-                {"role": "system", "content": system},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": user},
             ],
             **kwargs,
         )
         used_model = resp.model or model_name
         _track(self._provider, used_model, resp.usage)
-        return resp.choices[0].message.content or "", used_model
+        if getattr(resp.choices[0], "finish_reason", None) == "length":
+            logger.warning("Antwort von %s bei max_tokens=%s abgeschnitten", used_model, max_tokens)
+        return _text(resp), used_model
 
     def chat_with_history(
         self,
@@ -217,17 +249,13 @@ class OpenAICompatGateway(LLMGateway):
 
         resp = self._client.chat.completions.create(
             model=model_name,
-            temperature=temperature,
             max_tokens=max_tokens,
             messages=[{"role": "system", "content": system_content}] + oai_messages,
-            **_cache_key_kwargs(self._provider, conversation_id),
+            **self._kwargs(temperature, conversation_id),
         )
         used_model = resp.model or model_name
         _track(self._provider, used_model, resp.usage)
-        # content ist None, wenn der Provider (z.B. Gemini via OpenRouter) ohne
-        # Tool-Angebot trotzdem nur einen leeren/verweigerten Turn liefert —
-        # Aufrufer erwarten einen String, kein Optional.
-        return resp.choices[0].message.content or ""
+        return _text(resp)
 
     def chat_with_tools(
         self,
@@ -251,12 +279,11 @@ class OpenAICompatGateway(LLMGateway):
 
         resp = self._client.chat.completions.create(
             model=model_name,
-            temperature=temperature,
             max_tokens=max_tokens,
             messages=oai_messages,
             tools=oai_tools,
             tool_choice="auto",
-            **_cache_key_kwargs(self._provider, conversation_id),
+            **self._kwargs(temperature, conversation_id),
         )
         used_model = resp.model or model_name
         _track(self._provider, used_model, resp.usage)
@@ -289,12 +316,12 @@ class OpenAICompatGateway(LLMGateway):
             })
         resp = self._client.chat.completions.create(
             model=model_name,
-            temperature=temperature,
             max_tokens=max_tokens,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": content},
             ],
+            **self._kwargs(temperature),
         )
         used_model = resp.model or model_name
         _track(self._provider, used_model, resp.usage)

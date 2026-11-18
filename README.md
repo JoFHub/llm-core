@@ -64,6 +64,15 @@ Konfiguration wahlweise per Umgebungsvariablen (`LLMConfig.from_env()`), Dict (`
 
 `LLMBackend` kennt seine Region (`backend.region` → `"local"` / `"EU"` / `"US"`) — nützlich, um Datenflüsse anwendungsseitig zu steuern.
 
+Die Key-Variable folgt dem Backend; `LLMConfig.openai_api_key_env` braucht es nur für einen abweichenden Namen (bis
+0.3.0 stand dort fest `OPENAI_API_KEY`, OpenRouter las ohne `openai_api_key_env=""` den falschen Key).
+
+**Denktiefe und Cache bei OpenRouter** (seit 0.4.0): `LLMConfig.effort` geht bei Anthropic als
+`output_config.effort`, bei OpenRouter als `reasoning.effort` an die API (Mistral, OpenAI direkt und Ollama
+ignorieren ihn). Mit `effort` schickt OpenRouter keine `temperature` mit (Claude lehnt sie bei eingeschaltetem Denken
+ab). `call_chat` setzt bei OpenRouter wie bei Anthropic einen Cache-Breakpoint auf den System-Prompt; Timeout bei
+OpenRouter 30 min (ohne Streaming, lange Antworten).
+
 ## API-Überblick
 
 Alle Aufrufe laufen über den `LLMRunner`:

@@ -743,3 +743,77 @@ def test_runner_transcribe_uses_config_model():
                                      model="openai/whisper-large-v3-turbo", api_key="dummy"))
         assert runner.transcribe(b"RIFF", language="de") == "Hallo"
         assert mock_client.post.call_args.kwargs["body"]["model"] == "openai/whisper-large-v3-turbo"
+
+
+def _openrouter_gateway_mit_antwort(MockOpenAI, effort=None, finish_reason="stop"):
+    from llm_core.gateways.openai_compat import OpenAICompatGateway
+    mock_client = MagicMock()
+    MockOpenAI.return_value = mock_client
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock(message=MagicMock(content="Kapitel"), finish_reason=finish_reason)]
+    mock_response.model = "anthropic/claude-opus-5.5"
+    mock_response.usage.prompt_tokens = 100
+    mock_response.usage.completion_tokens = 10
+    mock_response.usage.prompt_tokens_details = None
+    mock_client.chat.completions.create.return_value = mock_response
+    return OpenAICompatGateway(provider="openrouter", api_key="dummy", effort=effort), mock_client
+
+
+def test_openai_compat_openrouter_chat_effort_als_reasoning_ohne_temperature():
+    """effort geht als reasoning.effort an OpenRouter; mit Denken keine Temperatur (Anthropic lehnt sie ab),
+    der System-Prompt bekommt wie bei Anthropic direkt einen Cache-Breakpoint."""
+    with patch("openai.OpenAI") as MockOpenAI:
+        gateway, client = _openrouter_gateway_mit_antwort(MockOpenAI, effort="medium")
+        text, _ = gateway.chat(system="sys", user="u", model_name="anthropic/claude-opus-5.5",
+                               temperature=0.9, max_tokens=64000)
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert text == "Kapitel"
+        assert kwargs["extra_body"] == {"reasoning": {"effort": "medium"}}
+        assert "temperature" not in kwargs
+        assert kwargs["messages"][0]["content"] == [
+            {"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}]
+        assert MockOpenAI.call_args.kwargs["timeout"] == 1800.0
+
+
+def test_openai_compat_openrouter_chat_ohne_effort_mit_temperature():
+    with patch("openai.OpenAI") as MockOpenAI:
+        gateway, client = _openrouter_gateway_mit_antwort(MockOpenAI)
+        gateway.chat(system="sys", user="u", model_name="x", temperature=0.9, max_tokens=100)
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert kwargs["temperature"] == 0.9
+        assert "extra_body" not in kwargs
+
+
+def test_openai_compat_effort_und_session_id_zusammen():
+    with patch("openai.OpenAI") as MockOpenAI:
+        gateway, client = _openrouter_gateway_mit_antwort(MockOpenAI, effort="high")
+        gateway.chat_with_history(system="s", messages=[{"role": "user", "content": "F"}], model_name="x",
+                                  temperature=0.1, max_tokens=100, conversation_id="c1")
+        assert client.chat.completions.create.call_args.kwargs["extra_body"] == {
+            "session_id": "c1", "reasoning": {"effort": "high"}}
+
+
+def test_openai_compat_mistral_ignoriert_effort():
+    from llm_core.gateways.openai_compat import OpenAICompatGateway
+    with patch("openai.OpenAI") as MockOpenAI:
+        client = MagicMock()
+        MockOpenAI.return_value = client
+        client.chat.completions.create.return_value.choices = [MagicMock(message=MagicMock(content="a"))]
+        client.chat.completions.create.return_value.usage = None
+        OpenAICompatGateway(provider="mistral", api_key="d", effort="high").chat(
+            system="s", user="u", model_name="m", temperature=0.2, max_tokens=10)
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert kwargs["temperature"] == 0.2 and "extra_body" not in kwargs
+        assert kwargs["messages"][0]["content"] == "s"
+        assert "timeout" not in MockOpenAI.call_args.kwargs
+
+
+def test_runner_openrouter_liest_openrouter_key(monkeypatch):
+    """Ohne openai_api_key_env sucht OpenRouter OPENROUTER_API_KEY (bis 0.3.0: OPENAI_API_KEY)."""
+    from llm_core import LLMBackend, LLMConfig, LLMRunner
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+    with patch("openai.OpenAI") as MockOpenAI:
+        LLMRunner(LLMConfig(backend=LLMBackend.OPENROUTER, model="x", effort="low"))
+        assert MockOpenAI.call_args.kwargs["api_key"] == "or-key"
+        assert MockOpenAI.call_args.kwargs["base_url"] == "https://openrouter.ai/api/v1"

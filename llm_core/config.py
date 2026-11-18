@@ -60,7 +60,10 @@ class LLMConfig:
     retry: RetryConfig = field(default_factory=RetryConfig)
     ollama_host: str = "http://localhost:11434"
     openai_base_url: str | None = None
-    openai_api_key_env: str = "OPENAI_API_KEY"
+    # None = Key-Variable des Providers (OPENROUTER_API_KEY, MISTRAL_API_KEY, OPENAI_API_KEY, s.
+    # gateways/openai_compat._PROVIDER_DEFAULTS). Bis 0.3.0 stand hier fest "OPENAI_API_KEY" -- damit las
+    # OpenRouter ohne ausdrueckliches openai_api_key_env="" den falschen Key
+    openai_api_key_env: str | None = None
     # Expliziter Key (hat Vorrang vor der Umgebungsvariable) — für Aufrufer, die Keys
     # pro Benutzer/Sitzung verwalten und nichts in os.environ ablegen wollen.
     api_key: str | None = None
@@ -68,8 +71,9 @@ class LLMConfig:
     # (qwen3 denkt), False = aus. Für JSON-Extraktion spart False ein Vielfaches an
     # Rechenzeit. Andere Backends ignorieren den Wert.
     think: bool | None = None
-    # Denktiefe bei Anthropic (output_config.effort: "low" … "max"): None =
-    # Modell-Standard. Andere Backends ignorieren den Wert.
+    # Denktiefe (Anthropic: output_config.effort "low" … "max"; OpenRouter:
+    # reasoning.effort "minimal" … "xhigh"): None = Modell-Standard. Ollama,
+    # Mistral und OpenAI direkt ignorieren den Wert.
     effort: str | None = None
     privacy_mode: bool = False
     cost_db_path: Path = field(default_factory=lambda: Path("~/.llm_core/costs.sqlite"))
@@ -104,7 +108,7 @@ class LLMConfig:
             max_tokens=int(os.getenv("LLM_MAX_TOKENS", "4096")),
             ollama_host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
             openai_base_url=os.getenv("OPENAI_BASE_URL") or None,
-            openai_api_key_env=os.getenv("LLM_API_KEY_ENV", "OPENAI_API_KEY"),
+            openai_api_key_env=os.getenv("LLM_API_KEY_ENV") or None,
             privacy_mode=os.getenv("LLM_PRIVACY_MODE", "").lower() in ("1", "true", "yes"),
         )
 
@@ -121,7 +125,7 @@ class LLMConfig:
             retry=retry,
             ollama_host=d.get("ollama_host", "http://localhost:11434"),
             openai_base_url=d.get("openai_base_url") or None,
-            openai_api_key_env=d.get("openai_api_key_env", "OPENAI_API_KEY"),
+            openai_api_key_env=d.get("openai_api_key_env") or None,
             think=d.get("think"),
             privacy_mode=d.get("privacy_mode", False),
         )

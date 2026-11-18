@@ -58,6 +58,7 @@ class LLMRunner:
                 base_url=config.openai_base_url,
                 api_key_env=config.openai_api_key_env or None,
                 api_key=config.api_key or None,
+                effort=config.effort,
             )
         else:
             raise ValueError(f"Unbekanntes Backend: {config.backend}")
