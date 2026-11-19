@@ -349,6 +349,33 @@ starten, Passwort setzen, `bash ~/llm-core/server/aktualisieren.sh --immer`.
 3. Alternativ im Anmeldeinformationsspeicher: `pip install "llm-core[keyring]"`, dann
    `keyring set llm-core OPENROUTER_PROVISIONING_KEY` (gilt ebenso für `ANTHROPIC_ADMIN_KEY`).
 
+## Anmeldung für MCP-Konnektoren
+
+`llm_core.mcp_anmeldung` (Extra `[mcp]`, mcp 2.3) ist die OAuth-Anmeldung, die claude.ai für einen
+Custom Connector über Remote-MCP verlangt: Registrierung des Clients (DCR), PKCE, eigene Anmeldeseite
+mit einem Passwort, ein Benutzer. Gemeinsam für Fabula und Memoria (vorher in `fabula/connector.py`).
+
+```python
+from llm_core.mcp_anmeldung import Anmeldung, scrypt_pruefer
+from mcp.server.mcpserver import MCPServer
+
+anmeldung = Anmeldung(ablage=Path("~/.app/connector").expanduser(), url="https://konnektor.example",
+                      passwort_ok=scrypt_pruefer(Path("~/.app/connector/passwort.hash").expanduser()),
+                      titel="App für Claude freigeben", text="Claude möchte auf deine Daten zugreifen.",
+                      scope="app", subject="app", aktiv=lambda: not schalter_aus())
+mcp = MCPServer(name="App", auth_server_provider=anmeldung, auth=anmeldung.auth_settings())
+anmeldung.seiten_einbinden(mcp)   # /anmelden (GET, POST) und /gesund
+```
+
+- Clients und Tokens in `<ablage>/oauth.json`; Zugang 1 Stunde, Erneuern 90 Tage (mit Rotation), Code 5 Minuten.
+- Datei löschen oder `alle_widerrufen()` meldet sofort ab, auch bei laufendem Server.
+- `aktiv()` liefert False → kein Token gilt, die Anmeldeseite nimmt nichts an.
+- Fehlversuche: nach 5 falschen Passwörtern in 15 Minuten nimmt die Seite bis zum Ende der Sperre kein
+  Passwort an, auch kein richtiges. Je Fehlversuch eine Sekunde Pause.
+- Höchstens 20 registrierte Clients (die ältesten ohne Token fallen heraus) und 50 offene Anmeldungen.
+- Hash im scrypt-Format von Probatio: `scrypt_hash(pw)`, `scrypt_ok(pw, hash)`, `scrypt_pruefer(datei)`.
+- Ins Log (`llm_core.mcp_anmeldung`) kommen nur Ereignisse, keine Passwörter oder Tokens.
+
 ## Tests
 
 ```bash

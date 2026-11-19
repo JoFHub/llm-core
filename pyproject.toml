@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-core"
-version = "0.6.1"
+version = "0.7.0"
 requires-python = ">=3.11"
 description = "Zentralisierter LLM-Zugriff: Ollama, Claude, OpenRouter, Mistral"
 readme = "README.md"
@@ -21,6 +21,8 @@ ui = ["streamlit>=1.50"]
 # Kosten-App (python -m llm_core.kosten_app): kleine Web-App ohne Build-Schritt
 app = ["starlette>=0.37", "jinja2>=3.1", "uvicorn>=0.29", "python-multipart>=0.0.9"]
 keyring = ["keyring>=24"]
+# Anmeldung für MCP-Konnektoren (llm_core.mcp_anmeldung): OAuth mit DCR und PKCE für claude.ai
+mcp = ["mcp>=2.3,<2.4", "uvicorn>=0.29"]
 dev = ["pytest>=8.0", "pytest-mock>=3.0", "httpx>=0.27"]
 
 [tool.setuptools.packages.find]
