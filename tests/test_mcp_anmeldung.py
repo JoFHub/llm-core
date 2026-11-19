@@ -102,8 +102,40 @@ def test_ganzer_weg_bis_mcp(aufbau):
     assert tok["expires_in"] == ma.ZUGANG_DAUER and tok["refresh_token"]
     assert _mcp(client, tok["access_token"]).status_code == 200
     gespeichert = json.loads(anmeldung.datei.read_text(encoding="utf-8"))
-    assert tok["access_token"] in gespeichert["zugang"]
+    assert ma._h(tok["access_token"]) in gespeichert["zugang"]
     assert len(anmeldung.angemeldet()) == 1
+
+
+def test_datei_enthaelt_keine_tokens(aufbau):
+    """Befund 35 (Memoria): In oauth.json stehen nur Hashes, auch nach dem Erneuern."""
+    client, anmeldung, _, _ = aufbau
+    client_id, tok = _tokens(client)
+    neu = client.post("/token", data={"grant_type": "refresh_token", "refresh_token": tok["refresh_token"],
+                                      "client_id": client_id}).json()
+    roh = anmeldung.datei.read_text(encoding="utf-8")
+    for t in (tok["access_token"], tok["refresh_token"], neu["access_token"], neu["refresh_token"]):
+        assert t not in roh
+    assert _mcp(client, neu["access_token"]).status_code == 200
+    assert _mcp(client, tok["access_token"]).status_code == 401
+
+
+def test_klartext_aus_070_wird_umgewandelt(aufbau):
+    """Eine Datei aus 0.7.0 meldet nicht ab: Tokens gelten weiter und stehen danach nur noch als Hash dort."""
+    client, anmeldung, _, _ = aufbau
+    client_id, tok = _tokens(client)
+    daten = json.loads(anmeldung.datei.read_text(encoding="utf-8"))
+    zugang_h, erneuern_h = ma._h(tok["access_token"]), ma._h(tok["refresh_token"])
+    daten["zugang"] = {tok["access_token"]: {**daten["zugang"][zugang_h], "erneuern": tok["refresh_token"]}}
+    daten["erneuern"] = {tok["refresh_token"]: daten["erneuern"][erneuern_h]}
+    anmeldung.datei.write_text(json.dumps(daten), encoding="utf-8")
+    assert tok["access_token"] in anmeldung.datei.read_text(encoding="utf-8")
+    assert _mcp(client, tok["access_token"]).status_code == 200
+    roh = anmeldung.datei.read_text(encoding="utf-8")
+    assert tok["access_token"] not in roh and tok["refresh_token"] not in roh
+    assert zugang_h in roh and erneuern_h in roh
+    r = client.post("/token", data={"grant_type": "refresh_token", "refresh_token": tok["refresh_token"],
+                                    "client_id": client_id})
+    assert r.status_code == 200, r.text
 
 
 def test_code_nur_mit_passender_pkce(aufbau):

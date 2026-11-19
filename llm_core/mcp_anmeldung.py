@@ -18,6 +18,10 @@ gekommen sind:
   Anmeldeseite nimmt nichts an.
 - Höchstzahl registrierter Clients und offener Anmeldungen, weil DCR ohne Anmeldung offen ist.
 - Passwort-Hash im scrypt-Format von Probatio (``scrypt_hash``, ``scrypt_pruefer``).
+- Seit 0.7.1 stehen in ``oauth.json`` nur SHA-256-Hashes der Tokens (``sha256:…``), nicht die
+  Tokens selbst: Wer die Datei liest (etwa aus einer Sicherung), kann sich damit nicht anmelden.
+  Die Tokens sind 32 Byte Zufall, ein Salz ist deshalb nicht nötig. Einträge im Klartext aus
+  0.7.0 werden beim Lesen umgewandelt und sofort gehasht zurückgeschrieben.
 
 Benutzung::
 
@@ -59,6 +63,20 @@ MAX_FEHLVERSUCHE = 5             # falsche Passwörter je Sperrzeit
 SPERRZEIT = 900                  # Sekunden
 MAX_CLIENTS = 20                 # registrierte Clients; die ältesten ohne Token fallen heraus
 MAX_ANFRAGEN = 50                # gleichzeitig offene Anmeldungen
+
+# ── Tokens ────────────────────────────────────────────────────────────────────
+
+_HASH_PRAEFIX = "sha256:"
+
+
+def _h(token: str) -> str:
+    """Schlüssel eines Tokens in oauth.json: Hash statt Klartext."""
+    return _HASH_PRAEFIX + hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _gehasht(schluessel: str) -> str:
+    return schluessel if schluessel.startswith(_HASH_PRAEFIX) else _h(schluessel)
+
 
 # ── Passwort ──────────────────────────────────────────────────────────────────
 
@@ -174,6 +192,21 @@ class Anmeldung:
             self._stand = stand
         for teil in ("clients", "zugang", "erneuern"):
             self._daten.setdefault(teil, {})
+        if self._klartext_umwandeln():
+            self._speichern()
+
+    def _klartext_umwandeln(self) -> bool:
+        """Tokens aus 0.7.0 (Klartext als Schlüssel) in Hashes umwandeln. True, wenn etwas umgewandelt wurde."""
+        alt = any(not k.startswith(_HASH_PRAEFIX) for teil in ("zugang", "erneuern") for k in self._daten[teil])
+        alt = alt or any(v.get("erneuern") and not v["erneuern"].startswith(_HASH_PRAEFIX)
+                         for v in self._daten["zugang"].values())
+        if not alt:
+            return False
+        self._daten["erneuern"] = {_gehasht(k): v for k, v in self._daten["erneuern"].items()}
+        self._daten["zugang"] = {_gehasht(k): {**v, **({"erneuern": _gehasht(v["erneuern"])} if v.get("erneuern") else {})}
+                                 for k, v in self._daten["zugang"].items()}
+        logger.info("Anmeldung: Tokens in oauth.json auf Hashes umgestellt")
+        return True
 
     def _speichern(self) -> None:
         datei = self.datei
@@ -297,9 +330,9 @@ class Anmeldung:
         gemeinsam = {"client_id": client_id, "scopes": scopes, "resource": resource, "subject": self.subject}
         with self._sperre:
             self._frisch()
-            self._daten["zugang"][zugang] = {**gemeinsam, "expires_at": jetzt + self.zugang_dauer,
-                                             "erneuern": erneuern}
-            self._daten["erneuern"][erneuern] = {**gemeinsam, "expires_at": jetzt + self.erneuern_dauer}
+            self._daten["zugang"][_h(zugang)] = {**gemeinsam, "expires_at": jetzt + self.zugang_dauer,
+                                                 "erneuern": _h(erneuern)}
+            self._daten["erneuern"][_h(erneuern)] = {**gemeinsam, "expires_at": jetzt + self.erneuern_dauer}
             self._speichern()
         return OAuthToken(access_token=zugang, expires_in=self.zugang_dauer, scope=" ".join(scopes),
                           refresh_token=erneuern)
@@ -316,7 +349,7 @@ class Anmeldung:
             return None
         with self._sperre:
             self._frisch()
-            roh = self._daten["erneuern"].get(refresh_token)
+            roh = self._daten["erneuern"].get(_h(refresh_token))
         if not roh or roh["client_id"] != client.client_id or roh["expires_at"] < self._uhr():
             return None
         return RefreshToken(token=refresh_token, **roh)
@@ -325,9 +358,10 @@ class Anmeldung:
                                      scopes: list[str]) -> OAuthToken:
         with self._sperre:  # beide erneuern (Rotation)
             self._frisch()
-            self._daten["erneuern"].pop(refresh_token.token, None)
+            schluessel = _h(refresh_token.token)
+            self._daten["erneuern"].pop(schluessel, None)
             self._daten["zugang"] = {k: v for k, v in self._daten["zugang"].items()
-                                     if v.get("erneuern") != refresh_token.token}
+                                     if v.get("erneuern") != schluessel}
         return self._tokens(client.client_id, scopes or refresh_token.scopes, refresh_token.resource)
 
     async def load_access_token(self, token: str) -> AccessToken | None:
@@ -335,7 +369,7 @@ class Anmeldung:
             return None
         with self._sperre:
             self._frisch()
-            roh = self._daten["zugang"].get(token)
+            roh = self._daten["zugang"].get(_h(token))
         if not roh or roh["expires_at"] < self._uhr():
             return None
         return AccessToken(token=token, **{k: v for k, v in roh.items() if k != "erneuern"})
@@ -343,10 +377,11 @@ class Anmeldung:
     async def revoke_token(self, token: AccessToken | RefreshToken) -> None:
         with self._sperre:
             self._frisch()
-            erneuern = (self._daten["zugang"].get(token.token) or {}).get("erneuern", token.token)
+            schluessel = _h(token.token)
+            erneuern = (self._daten["zugang"].get(schluessel) or {}).get("erneuern", schluessel)
             self._daten["erneuern"].pop(erneuern, None)
             self._daten["zugang"] = {k: v for k, v in self._daten["zugang"].items()
-                                     if k != token.token and v.get("erneuern") != erneuern}
+                                     if k != schluessel and v.get("erneuern") != erneuern}
             self._speichern()
 
     # ── Einbinden ──
