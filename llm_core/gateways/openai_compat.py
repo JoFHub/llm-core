@@ -248,7 +248,13 @@ class OpenAICompatGateway(LLMGateway):
             return BatchErgebnis(art="errored", fehler=text or f"HTTP {antwort.get('status_code')}")
         body = antwort.get("body") or {}
         wahl = (body.get("choices") or [{}])[0]
-        usage = _als_objekt(body.get("usage") or stand.get("usage")) or None
+        # Den Ist-Preis (cost) hat nur die usage des ganzen Batches, nicht die der Antwort (geprüft 2026-11-19);
+        # bei einer Anfrage je Batch gilt er genau für sie
+        roh = dict(body.get("usage") or stand.get("usage") or {})
+        gesamt = stand.get("usage") or {}
+        if "cost" not in roh and "cost" in gesamt:
+            roh["cost"] = gesamt["cost"]
+        usage = _als_objekt(roh) if roh else None
         used_model = body.get("model") or model_name
         _track(self._provider, used_model, usage)
         grund = wahl.get("finish_reason")

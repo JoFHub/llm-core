@@ -74,12 +74,14 @@ def _or_runner(effort="medium"):
 
 
 def _or_fertig(text="Kapitel", finish="stop"):
+    # Wie die echte Antwort (Probe 2026-11-19): cost nur in der usage des Batches, nicht in der des body
     return {"id": "batch_1", "status": "completed", "request_counts": {"total": 1, "completed": 1, "failed": 0},
+            "usage": {"prompt_tokens": 1000, "completion_tokens": 500, "cost": 0.0016, "is_byok": False},
             "results": [{"id": "batch_req_1", "custom_id": "kapitel-1", "error": None, "response": {
                 "status_code": 200, "request_id": "r1", "body": {
                     "model": "openai/gpt-6.1-terra",
                     "choices": [{"message": {"content": text}, "finish_reason": finish}],
-                    "usage": {"prompt_tokens": 1000, "completion_tokens": 500, "cost": 0.0016,
+                    "usage": {"prompt_tokens": 1000, "completion_tokens": 500,
                               "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
                               "completion_tokens_details": {"reasoning_tokens": 100}}}}}]}
 
@@ -115,6 +117,7 @@ def test_openrouter_batch_ergebnis():
         e = runner.batch_ergebnis("batch_1")
         assert (e.art, e.text, e.stop_reason) == ("succeeded", "Kapitel", "length")
         assert e.usage.prompt_tokens == 1000 and e.usage.completion_tokens_details.reasoning_tokens == 100
+        assert e.usage.cost == 0.0016
         assert total_cost(days=1) == pytest.approx(0.0016)  # Ist-Preis von OpenRouter, schon zum Batch-Preis
         client.get.return_value = {"id": "batch_1", "status": "expired", "error": None, "results": []}
         assert runner.batch_ergebnis("batch_1").art == "expired"
