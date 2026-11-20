@@ -9,7 +9,7 @@ STANDARD_PORT = 8510
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m llm_core.kosten_app", description="Kosten-App von llm-core")
+    parser = argparse.ArgumentParser(prog="python -m llm_core.kosten_app", description="Ratio — Kosten-App von llm-core")
     parser.add_argument("--port", type=int, default=int(os.environ.get("LLM_CORE_APP_PORT", STANDARD_PORT)))
     # Nur localhost: die App hat keine eigene Anmeldung. Andere Adressen nur hinter einer Anmeldung (Server: Caddy).
     parser.add_argument("--adresse", default=os.environ.get("LLM_CORE_APP_ADRESSE", "localhost"))
@@ -20,7 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError:
         print('Starlette/Uvicorn fehlen: pip install "llm-core[app]"', file=sys.stderr)
         return 1
-    print(f"Kosten-App: http://{args.adresse}:{args.port}")
+    print(f"Ratio: http://{args.adresse}:{args.port}")
     # Zugriffsprotokoll aus: es enthielte nur Pfade, aber nichts davon wird gebraucht
     uvicorn.run(erstelle_app(), host=args.adresse, port=args.port, access_log=False, server_header=False,
                 proxy_headers=False)

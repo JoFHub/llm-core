@@ -333,7 +333,7 @@ def erstelle_app(
 
     async def manifest(request: Request) -> Response:
         return JSONResponse({
-            "name": "Kosten", "short_name": "Kosten", "lang": "de", "start_url": "/", "scope": "/",
+            "name": "Ratio", "short_name": "Ratio", "lang": "de", "start_url": "/", "scope": "/",
             "display": "standalone", "background_color": "#f4f5f7", "theme_color": "#f4f5f7",
             "icons": [{"src": "/statisch/symbol-192.png", "sizes": "192x192", "type": "image/png"},
                       {"src": "/statisch/symbol-512.png", "sizes": "512x512", "type": "image/png"},

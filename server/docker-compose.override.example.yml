@@ -1,0 +1,9 @@
+# Vorlage: nach server/docker-compose.override.yml kopieren und die Probatio-Kunden dieses Servers eintragen
+# (nicht in Git — keine Kundennamen im öffentlichen Repo). docker compose liest die Datei von selbst mit.
+services:
+  kosten:
+    environment:
+      LLM_CORE_KOSTEN_DBS: /kosten/fabula:/kosten/probatio-kunde-a:/kosten/probatio-kunde-b
+    volumes:
+      - ../../probatio/server/daten/kunde-a/probatio/llm_core:/kosten/probatio-kunde-a:ro
+      - ../../probatio/server/daten/kunde-b/probatio/llm_core:/kosten/probatio-kunde-b:ro

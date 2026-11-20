@@ -2,7 +2,7 @@
 Seitenleisten-Baustein für Streamlit-Apps (Probatio, Memoria, Fabula): Kosten in ein bis zwei Zeilen.
 
     from llm_core.ui import kosten_seitenleiste
-    kosten_seitenleiste(key_env="OPENROUTER_API_KEY_VISIBILIA", titel="Kosten Visibilia")
+    kosten_seitenleiste(key_env="OPENROUTER_API_KEY_KUNDE_A", titel="Kosten Kunde A")
 
 Für Apps direkt bei Anthropic (kein Limit und kein Verbrauch je Key abfragbar) die
 aus der Kosten-DB berechneten Kosten:

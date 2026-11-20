@@ -177,23 +177,24 @@ Zugriff (alte Zeilen: `""`).
 from llm_core import cost_tracker
 
 cost_tracker.set_tag_source(lambda: aktives_profil())   # ohne Angabe: ""
-cost_tracker.total_cost(days=30, tag="visibilia")
-cost_tracker.model_summary(days=30, tag="visibilia")
+cost_tracker.total_cost(days=30, tag="kunde-a")
+cost_tracker.model_summary(days=30, tag="kunde-a")
 cost_tracker.tag_summary(days=30)    # [{tag, provider, cost_usd, calls, last}]
 ```
 
 Die Preistabelle liegt in `llm_core/cost_tracker.py` (`pricing_table()`); unbekannte Modelle werden mit Kosten 0 erfasst.
 
-## Kosten und Keys: Kosten-App und Seitenleiste
+## Kosten und Keys: Ratio (Kosten-App) und Seitenleiste
 
 Der **echte Verbrauch** steht beim Anbieter, je Key; die lokale Kosten-DB ist eine Schätzung je Rechner.
 `llm_core.anbieter` fragt den Anbieter ab, `llm_core.ui` zeigt das Ergebnis in einer App-Seitenleiste,
-`llm_core.kosten_app` ist die kleine Web-App fürs iPhone und iPad (Übersicht in Euro, einfache Verwaltung).
+`llm_core.kosten_app` ist die kleine Web-App **Ratio** fürs iPhone und iPad (Übersicht in Euro, einfache
+Verwaltung).
 Mistral ist bewusst nicht dabei.
 
 ```bash
 pip install "llm-core[ui] @ git+https://github.com/JoFHub/llm-core.git"    # Seitenleiste: Streamlit nur mit Extra ui
-pip install "llm-core[app] @ git+https://github.com/JoFHub/llm-core.git"   # Kosten-App: Starlette, Jinja2, Uvicorn
+pip install "llm-core[app] @ git+https://github.com/JoFHub/llm-core.git"   # Ratio (Kosten-App): Starlette, Jinja2, Uvicorn
 ```
 
 ### Anbieter-Status (ohne Oberfläche)
@@ -203,7 +204,7 @@ import os
 from llm_core import anbieter
 
 o = anbieter.OpenRouter()                         # Keys aus Umgebung/.env, Provisioning-Key falls vorhanden
-s = o.key_status(os.environ["OPENROUTER_API_KEY_VISIBILIA"], "visibilia")
+s = o.key_status(os.environ["OPENROUTER_API_KEY_KUNDE_A"], "kunde-a")
 s.monat, s.heute, s.limit, s.rest, s.fehler       # Fehler (401, 402, Timeout) stehen im Feld, nichts wird geworfen
 anbieter.ampel(s)                                 # "gruen" | "gelb" | "rot" | "grau"
 o.keys()                                          # mit Provisioning-Key alle Keys des Kontos, sonst OPENROUTER_API_KEY*
@@ -224,13 +225,13 @@ Schwellen: `anbieter.Schwellen(gelb=0.8, rot=1.0)` oder `LLM_CORE_AMPEL_GELB` / 
 ```python
 from llm_core.ui import kosten_seitenleiste
 
-kosten_seitenleiste(key_env="OPENROUTER_API_KEY_VISIBILIA", titel="Kosten Visibilia")
+kosten_seitenleiste(key_env="OPENROUTER_API_KEY_KUNDE_A", titel="Kosten Kunde A")
 ```
 
 Ein bis zwei kleine Zeilen: `:green[:material/check_circle:] 3,71 € von 9,08 € (41 %)`
-(Ampel als farbiges Material-Symbol). **Nur Euro** wie in der Kosten-App: Der Anbieter rechnet in USD, umgerechnet
+(Ampel als farbiges Material-Symbol). **Nur Euro** wie in Ratio: Der Anbieter rechnet in USD, umgerechnet
 wird zum EZB-Kurs (`kosten_app.kurs`, fest mit `LLM_CORE_EUR_KURS`); ohne Kurs kein Dollar-Betrag, sondern nur der
-Anteil am Limit (`85 % des Limits (kein Euro-Kurs)`); heute/Monat stehen nur in der Kosten-App. Gezeigt werden
+Anteil am Limit (`85 % des Limits (kein Euro-Kurs)`); heute/Monat stehen nur in Ratio. Gezeigt werden
 die Kosten je Key, wie der Anbieter sie abrechnet (über alle Rechner); ohne Key oder bei Fehler eine graue Zeile
 (`kein Key (…)` bzw. die Fehlermeldung), keine Schätzung aus der Kosten-DB. Der Key bleibt im
 Server-Prozess; ins HTML kommt nur der Text. `kosten_zeilen(...)` liefert dieselben Zeilen ohne Streamlit.
@@ -255,7 +256,7 @@ Kosten zeigt jede App gleich, und nur so — maßgeblich sind die **Kosten je Ke
 (Ausnahme: Apps direkt bei Anthropic, s. oben):
 
 1. **Ein OpenRouter-Key je App bzw. Kundenprofil, immer mit Limit** (`OPENROUTER_API_KEY_<APP|PROFIL>`, angelegt
-   und begrenzt in der Kosten-App). Ohne eigenen Key gilt der allgemeine Key der App. Eine App direkt bei Anthropic
+   und begrenzt in Ratio). Ohne eigenen Key gilt der allgemeine Key der App. Eine App direkt bei Anthropic
    (Fabula) hat stattdessen eine Ausgabengrenze in der Anthropic Console.
 2. **In der App nur der Baustein**: einmal unten in der Seitenleiste
    `kosten_seitenleiste(key_env=<Key der App bzw. des Profils>, titel="Kosten <Name>")`, bei Anthropic
@@ -263,12 +264,17 @@ Kosten zeigt jede App gleich, und nur so — maßgeblich sind die **Kosten je Ke
    Keine eigene Kostenseite, keine eigene Abfrage beim Anbieter, keine eigenen Betragsformate. Der Baustein zeigt
    nur den eigenen Key — ein Kunde sieht in einer Vorführung keine anderen Kunden.
 3. **Kosten-DB nur für Einzelheiten**: jeder Aufruf mit `tag` (App bzw. Kundenprofil, `cost_tracker.set_tag_source`)
-   in eine eigene Kosten-DB je App (`LLM_CORE_DATA_DIR`; auf dem Server im Datenordner). Daraus berechnet die
-   Kosten-App die Anthropic-Kosten; in der App erscheint sie nur über `kosten_seitenleiste_berechnet` (Anthropic).
-4. **Übersicht und Verwaltung in der Kosten-App** (auf dem Server, auch am iPhone): Verbrauch aller Keys in Euro,
+   in eine eigene Kosten-DB je App (`LLM_CORE_DATA_DIR`; auf dem Server im Datenordner). Daraus berechnet
+   Ratio die Anthropic-Kosten; in der App erscheint sie nur über `kosten_seitenleiste_berechnet` (Anthropic).
+4. **Übersicht und Verwaltung in Ratio** (auf dem Server, auch am iPhone): Verbrauch aller Keys in Euro,
    Limits ändern, Keys anlegen oder sperren. Verläufe und Kosten je Tag oder Modell in den Konsolen der Anbieter.
 
-### Kosten-App
+### Ratio (Kosten-App)
+
+**Name „Ratio“** (lat. „Rechnung, Abrechnung“, passend zu Probatio, Fabula, Memoria, Porta; Entscheidung des Nutzers,
+2026-11-20). So heißt die App im Titel, auf dem Home-Bildschirm und in der Adresse (`ratio.<domain>`). Technisch
+bleibt es bei „kosten“: Modul `llm_core.kosten_app`, Dienst und Container `kosten`, Benutzer `kosten`, Variable
+`KOSTEN_HOST`.
 
 Eine kleine Web-App, mit der man auf dem iPhone oder iPad in wenigen Sekunden sieht, was die Sprachmodelle kosten —
 **nur in Euro** —, und mit der man einfache Verwaltung erledigt (nur OpenRouter). Ersetzt seit 0.3.0 die
@@ -307,15 +313,16 @@ URLs oder Logs (nur gekürzt). Ändernde Aktionen nur per POST mit CSRF-Token (a
 
 #### Als App auf den Home-Bildschirm (iPhone, iPad)
 
-1. Die Adresse (Server: `https://kosten.31-70-152-107.sslip.io`) in **Safari** öffnen und anmelden.
-2. Teilen-Knopf → **Zum Home-Bildschirm** → „Kosten“.
+1. Die Adresse (Server: `https://ratio.<domain>`, siehe unten) in **Safari** öffnen und anmelden.
+2. Teilen-Knopf → **Zum Home-Bildschirm** → „Ratio“.
 3. Beim ersten Start der Home-Bildschirm-App einmal anmelden: iOS gibt ihr einen eigenen Cookie-Speicher, die
    Anmeldung aus Safari gilt dort nicht. Die Anmeldeseite (`/_anmeldung/`) öffnet sich in der App selbst (gleiche
    Adresse, `scope: "/"`); danach hält das Cookie 30 Tage.
 
-### Kosten-App auf dem Server
+### Ratio auf dem Server
 
-Die App läuft auf dem Server `jof-server` (IONOS, neben Probatio und Fabula), damit die Kosten immer erreichbar sind: OpenRouter (Memoria, Probatio)
+Ratio ist auf dem Server unter `https://ratio.<domain>` erreichbar (der Name der Domain steht nur in `server/.env`,
+nicht im Repo). Die App läuft dort neben Probatio und Fabula, damit die Kosten immer erreichbar sind: OpenRouter (Memoria, Probatio)
 kommt ohnehin über die Keys beim Anbieter, und Fabula — die einzige App direkt bei Anthropic — läuft nur dort,
 ihre Kosten-DB liegt also auf demselben Rechner.
 
@@ -323,15 +330,17 @@ ihre Kosten-DB liegt also auf demselben Rechner.
   `probatio`; HTTPS und Anmeldung macht Caddy aus dem Probatio-Stack
   (`{$KOSTEN_HOST} { import geschuetzt kosten kosten:8510 }`), Benutzer `kosten` (`bash passwort.sh kosten` in
   `~/probatio/server`).
-- Kosten-DBs nur lesend eingebunden: Fabula (`~/fabula/server/daten/llm_core`) und die Probatio-Instanzen
-  `ta`, `visibilia` (`~/probatio/server/daten/<kunde>/probatio/llm_core`), Variable `LLM_CORE_KOSTEN_DBS`.
+- Kosten-DBs nur lesend eingebunden: Fabula (`~/fabula/server/daten/llm_core`) und die Probatio-Instanzen je
+  Kunde (`~/probatio/server/daten/<kunde>/probatio/llm_core`), Variable `LLM_CORE_KOSTEN_DBS`. Welche Kunden, steht
+  nur auf dem Server in `server/docker-compose.override.yml` (Vorlage `server/docker-compose.override.example.yml`,
+  nicht in Git), damit keine Kundennamen im öffentlichen Repo stehen.
 - Keys in `server/.env` (Vorlage `server/env.example`): `KOSTEN_HOST`, `OPENROUTER_PROVISIONING_KEY`, optional
   `LLM_CORE_EUR_KURS`. Das Image enthält keine Keys (`.dockerignore`).
-- Aktualisieren: `ssh jof-server`, `bash llm-core/server/aktualisieren.sh` (holt `main`, baut, startet neu,
+- Aktualisieren: auf dem Server `bash ~/llm-core/server/aktualisieren.sh` (holt `main`, baut, startet neu,
   prüft Gesundheit über `/gesund` und die Anmeldeseite).
 
 Einrichten (einmal): `git clone https://github.com/JoFHub/llm-core.git ~/llm-core`, `server/.env` aus
-`env.example` anlegen, `KOSTEN_HOST` auch in `~/probatio/server/.env` eintragen, Caddy im Probatio-Stack neu
+`env.example` und `docker-compose.override.yml` aus der Vorlage anlegen, `KOSTEN_HOST` auch in `~/probatio/server/.env` eintragen, Caddy im Probatio-Stack neu
 starten, Passwort setzen, `bash ~/llm-core/server/aktualisieren.sh --immer`.
 
 ### Einrichtung

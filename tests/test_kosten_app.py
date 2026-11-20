@@ -59,7 +59,7 @@ def _key(hash_, name, usage, limit, remaining=None, reset=None, disabled=False, 
 
 KEYS_OK = [
     _key("h1", "Memoria", 3.7, 10.0, daily=0.05, monthly=3.0),
-    _key("h2", "Probatio-visibilia", 0.4, 10.0, daily=0.0, monthly=1.0),
+    _key("h2", "Probatio-kunde-a", 0.4, 10.0, daily=0.0, monthly=1.0),
     _key("h3", "Fabula", 1.0, 5.0, disabled=True, monthly=0.29),
 ]
 CREDITS = (200, {"data": {"total_credits": 30.0, "total_usage": 14.43}})
@@ -144,7 +144,7 @@ def test_uebersicht_keys_reihenfolge_und_gesperrt():
     keys = KEYS_OK + [_key("h4", "Ohne-Limit", 0.2, None), _key("h5", "Fast", 8.5, 10.0)]
     html = _client(FakeTransport(_antworten(keys))).get("/").text
     namen = re.findall(r'<span class="name">([^<]+)</span>', html)
-    assert namen == ["Ohne-Limit", "Fast", "Memoria", "Probatio-visibilia", "Fabula"]
+    assert namen == ["Ohne-Limit", "Fast", "Memoria", "Probatio-kunde-a", "Fabula"]
     assert "3,33 €" in html and "37 %" in html            # Memoria: 3,70 $ von 10 $
     fabula = html[html.index(">Fabula<"):]
     assert "gesperrt" in fabula[:300]
@@ -330,7 +330,7 @@ def test_eingaben():
     for falsch in ("nan", "inf", "1e9", "-0,5"):
         with pytest.raises(logik.Eingabefehler):
             logik.lies_limit(falsch)
-    assert logik.lies_name("  Probatio   ta ") == "Probatio ta"
+    assert logik.lies_name("  Probatio   kunde ") == "Probatio kunde"
     with pytest.raises(logik.Eingabefehler):
         logik.lies_reset("yearly")
 

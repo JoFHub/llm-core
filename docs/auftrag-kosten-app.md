@@ -39,12 +39,12 @@ die App verlinkt dorthin.
   brauchbar: `daten.py` (`kosten_seit(dbs, seit, provider)`, `db_kandidaten()`, DB nur lesend),
   `_gemeinsam.eur_kurs()` (EZB-Kurs über frankfurter.dev, an Streamlit gebunden — für die App ohne Streamlit neu
   fassen), `ui.betrag(wert, waehrung)` (deutsches Zahlenformat).
-- **Server** (IONOS, Alias `probatio-server`): Konsole als eigener Stack `~/llm-core/server/` (Projekt `llm-core`,
+- **Server** (IONOS): Konsole als eigener Stack `~/llm-core/server/` (Projekt `llm-core`,
   Dienst `kosten`, Port 8510, kein Port nach außen) im Docker-Netz `probatio`. Caddy und Anmeldung kommen aus dem
   Probatio-Stack: `{$KOSTEN_HOST} { import geschuetzt kosten kosten:8510 }`, Adresse
-  `https://kosten.31-70-152-107.sslip.io`, Benutzer `kosten`. Die Anmeldung setzt ein Cookie (`Secure; HttpOnly;
+  `https://ratio.<domain>` (bis 20.11. sslip.io), Benutzer `kosten`. Die Anmeldung setzt ein Cookie (`Secure; HttpOnly;
   SameSite=Lax`, 30 Tage). Keys in `server/.env` (`OPENROUTER_PROVISIONING_KEY`, `KOSTEN_HOST`). Kosten-DBs nur
-  lesend eingebunden: `/kosten/fabula`, `/kosten/probatio-ta`, `/kosten/probatio-visibilia`
+  lesend eingebunden: `/kosten/fabula`, `/kosten/probatio-<kunde>`
   (`LLM_CORE_KONSOLE_DBS`). Aktualisieren: `server/aktualisieren.sh` (holt `main`, baut, prüft Gesundheit und
   Anmeldeseite).
 
@@ -67,7 +67,7 @@ Kosten                                   ⟳
 └─────────────────────────────────────────┘
 Keys                                     +
 ● Memoria            3,33 € · 37 %       ›
-● Probatio-visibilia 0,32 € ·  4 %       ›
+● Probatio-kunde-a 0,32 € ·  4 %       ›
 ○ Fabula             gesperrt            ›
 Stand 09:34 · 1 $ = 0,90 € (EZB, 28.10.)
 ```

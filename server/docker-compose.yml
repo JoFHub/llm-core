@@ -2,7 +2,9 @@
 # HTTPS und Anmeldung macht Caddy aus dem Probatio-Stack (probatio/server/Caddyfile:
 # import geschuetzt kosten kosten:8510); dafür hängt die App im Netz „probatio“ dieses Stacks.
 # Aufruf in diesem Ordner: bash aktualisieren.sh (bzw. docker compose up -d --build)
-# Keys und Adresse in server/.env (Vorlage env.example), nicht in Git.
+# Keys und Adresse in server/.env (Vorlage env.example), nicht in Git. Die Probatio-Kunden (Kosten-DBs) stehen nur
+# in docker-compose.override.yml (Vorlage docker-compose.override.example.yml, nicht in Git) — docker compose liest
+# sie von selbst mit.
 name: llm-core
 
 services:
@@ -12,12 +14,11 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      # Kosten-DBs der Apps auf diesem Server, nur lesend (berechnete Anthropic-Kosten)
-      LLM_CORE_KOSTEN_DBS: /kosten/fabula:/kosten/probatio-ta:/kosten/probatio-visibilia
+      # Kosten-DBs der Apps auf diesem Server, nur lesend (berechnete Anthropic-Kosten); die volle Liste mit den
+      # Probatio-Kunden setzt die Override-Datei
+      LLM_CORE_KOSTEN_DBS: /kosten/fabula
     volumes:
       - ../../fabula/server/daten/llm_core:/kosten/fabula:ro
-      - ../../probatio/server/daten/ta/probatio/llm_core:/kosten/probatio-ta:ro
-      - ../../probatio/server/daten/visibilia/probatio/llm_core:/kosten/probatio-visibilia:ro
 
 networks:
   default:

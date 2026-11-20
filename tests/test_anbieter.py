@@ -46,7 +46,7 @@ KEY_ANTWORT = (200, {"data": {
     "usage": 4.1, "usage_daily": 0.35, "usage_weekly": 1.2, "usage_monthly": 3.1, "is_free_tier": False}})
 
 KEYS_ANTWORT = (200, {"data": [
-    {"hash": "h1", "name": "probatio-visibilia", "label": "sk-or-v1-abc...a1b2", "disabled": False,
+    {"hash": "h1", "name": "probatio-kunde-a", "label": "sk-or-v1-abc...a1b2", "disabled": False,
      "limit": 10, "limit_remaining": 1.5, "limit_reset": None,
      "usage": 8.5, "usage_daily": 0.5, "usage_weekly": 2, "usage_monthly": 6},
     {"hash": "h2", "name": "fabula", "label": "sk-or-v1-def...c3d4", "disabled": True,
@@ -103,10 +103,10 @@ def test_kuerze_key():
 
 def test_keys_aus_umgebung(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "a")
-    monkeypatch.setenv("OPENROUTER_API_KEY_VISIBILIA", "b")
+    monkeypatch.setenv("OPENROUTER_API_KEY_KUNDE_A", "b")
     monkeypatch.setenv("OPENROUTER_API_KEY_LEER", " ")
     keys = an.keys_aus_umgebung()
-    assert keys["OPENROUTER_API_KEY"] == "a" and keys["OPENROUTER_API_KEY_VISIBILIA"] == "b"
+    assert keys["OPENROUTER_API_KEY"] == "a" and keys["OPENROUTER_API_KEY_KUNDE_A"] == "b"
     assert "OPENROUTER_API_KEY_LEER" not in keys
 
 
@@ -122,8 +122,8 @@ def test_provisioning_key_aus_umgebung_und_keyring(monkeypatch):
 
 def test_key_status():
     t = FakeTransport({("GET", "/key"): KEY_ANTWORT})
-    s = an.OpenRouter(api_keys={}, provisioning="", transport=t).key_status(KEY, "VISIBILIA")
-    assert (s.name, s.kennung) == ("VISIBILIA", "sk-or-v1-…a1b2")
+    s = an.OpenRouter(api_keys={}, provisioning="", transport=t).key_status(KEY, "KUNDE_A")
+    assert (s.name, s.kennung) == ("KUNDE_A", "sk-or-v1-…a1b2")
     assert (s.verbrauch_gesamt, s.heute, s.monat, s.limit, s.rest) == (4.1, 0.35, 3.1, 10.0, 5.9)
     assert s.fehler is None
     assert an.ampel(s) == an.GRUEN
@@ -193,10 +193,10 @@ def test_fehler_wird_nicht_zwischengespeichert():
 
 def test_ohne_provisioning_nur_umgebungs_keys():
     t = FakeTransport({("GET", "/key"): KEY_ANTWORT})
-    o = an.OpenRouter(api_keys={"OPENROUTER_API_KEY_VISIBILIA": KEY}, provisioning="", transport=t)
+    o = an.OpenRouter(api_keys={"OPENROUTER_API_KEY_KUNDE_A": KEY}, provisioning="", transport=t)
     assert not o.hat_provisioning and o.eingerichtet()
     keys = o.keys()
-    assert [k.name for k in keys] == ["OPENROUTER_API_KEY_VISIBILIA"]
+    assert [k.name for k in keys] == ["OPENROUTER_API_KEY_KUNDE_A"]
     assert o.konto() is None
     assert all("/keys" not in a["url"] for a in t.anfragen)
 
@@ -205,7 +205,7 @@ def test_alle_keys_mit_provisioning():
     t = FakeTransport({("GET", "/keys"): KEYS_ANTWORT})
     o = an.OpenRouter(api_keys={}, provisioning=PROV, transport=t)
     keys = o.keys()
-    assert [(k.id, k.name, k.aktiv) for k in keys] == [("h1", "probatio-visibilia", True), ("h2", "fabula", False)]
+    assert [(k.id, k.name, k.aktiv) for k in keys] == [("h1", "probatio-kunde-a", True), ("h2", "fabula", False)]
     assert an.ampel(keys[0]) == an.GELB      # 8,5 von 10
     assert an.ampel(keys[1]) == an.ROT       # ohne Limit
     a = t.anfragen[0]

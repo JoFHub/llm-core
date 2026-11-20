@@ -20,7 +20,7 @@ Kopie in Probatio).
 - Die Daten liegen verteilt: Omen (Probatio und Fabula teilen sich `~/.llm_core`), Memoria (`~/.memoria`), Server
   (Docker, je Kunde eine Instanz), Vorführ-Laptop. Eine lokale Datenbank zeigt nie alles.
 - Der **echte Verbrauch** steht beim Anbieter, je Key. Regel: ein OpenRouter-Key je App bzw. Kundenprofil, jeder mit
-  Limit (in Probatio z. B. `OPENROUTER_API_KEY_VISIBILIA`, Limit 10 $). Probatio fragt heute schon
+  Limit (in Probatio z. B. `OPENROUTER_API_KEY_KUNDE_A`, Limit 10 $). Probatio fragt heute schon
   `GET https://openrouter.ai/api/v1/key` ab (Verbrauch, Limit, heute, Monat) — Code im Anhang (das Repo Probatio
   ist privat und für diese Sitzung nicht nötig).
 
@@ -56,7 +56,7 @@ Neues Modul, z. B. `llm_core/anbieter.py` (Name frei):
 `llm_core/ui.py` (oder Unterpaket), **optionale Abhängigkeit** `llm-core[ui]` mit `streamlit` — llm-core selbst
 darf nicht von Streamlit abhängen (Import nur im UI-Modul).
 
-- Ein Aufruf, z. B. `kosten_seitenleiste(key_env="OPENROUTER_API_KEY_VISIBILIA", tag="visibilia", titel=…)`: eine
+- Ein Aufruf, z. B. `kosten_seitenleiste(key_env="OPENROUTER_API_KEY_KUNDE_A", tag="kunde-a", titel=…)`: eine
   bis drei kurze Zeilen — Verbrauch von Limit mit Ampel, heute, bei Fehler/ohne Key der lokale Verbrauch der letzten
   30 Tage aus der Kosten-DB (`tag`-Filter). Kein großer Kasten; Stil neutral, passt in Probatio, Memoria, Fabula.
 - Kein API-Key verlässt den Server-Prozess, nichts davon im HTML.
@@ -109,7 +109,7 @@ Porta des Nutzers.
 ## Anhang: heutige Kostenanzeige in Probatio (Stand 2026-10-26)
 
 Zur Orientierung, was der Baustein später ersetzt. Key-Regel in Probatio: `OPENROUTER_API_KEY_<PROFIL>` (z. B.
-`OPENROUTER_API_KEY_VISIBILIA`) hat Vorrang vor dem allgemeinen `OPENROUTER_API_KEY`; der Profilname ist auch der
+`OPENROUTER_API_KEY_KUNDE_A`) hat Vorrang vor dem allgemeinen `OPENROUTER_API_KEY`; der Profilname ist auch der
 `tag` in der Kosten-DB (`cost_tracker.set_tag_source(profile_name)`).
 
 Abfrage beim Anbieter (`probatio/rag/kosten.py`):
@@ -166,5 +166,5 @@ def sidebar_cost_block():
             st.caption(f":material/payments: Kosten {profile_name()}: {total}  \nletzte 30 Tage, dieser Rechner")
 ```
 
-Darstellung heute: `Kosten visibilia: 0,412 $ von 10,00 $` / `OpenRouter-Key · heute 0,031 $` (deutsche
+Darstellung heute: `Kosten kunde-a: 0,412 $ von 10,00 $` / `OpenRouter-Key · heute 0,031 $` (deutsche
 Zahlenformate: Komma, `$` nachgestellt). Der Baustein soll mindestens das leisten, plus Ampel.
